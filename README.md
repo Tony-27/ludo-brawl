@@ -33,6 +33,18 @@ Open http://localhost:4200 in two browser windows (or one normal + one private w
 
 `npm run build` in `frontend/` puts the app in `frontend/dist/frontend/browser`. If that folder exists, the backend serves it too, so `uvicorn ludobrawl.api:app --port 8000` alone gives you the whole game at http://localhost:8000. Set `LUDO_STATIC_DIR` to serve a build from somewhere else.
 
+### Configuration
+
+| Env var | Default | Meaning |
+| --- | --- | --- |
+| `LUDO_BOT_DELAY` | `0.9` | Seconds a bot waits before each action |
+| `LUDO_TURN_TIMEOUT` | `30` | Seconds before an idle human's turn is auto-played |
+| `LUDO_ROOM_TTL` | `7200` | Seconds of inactivity before a room is deleted |
+| `LUDO_CORS_ORIGINS` | `http://localhost:4200` | Comma-separated origins allowed to call the API |
+| `LUDO_STATIC_DIR` | `frontend/dist/frontend/browser` | Built frontend to serve |
+
+Tip: `LUDO_BOT_DELAY=0.05 LUDO_TURN_TIMEOUT=0.3` makes a game play itself to the end in about a minute, which is handy for testing the end-of-game screens.
+
 ### Tests
 
 ```bash

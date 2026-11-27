@@ -346,7 +346,8 @@ class RoomManager:
             if current.is_bot and waited >= self.settings.bot_delay:
                 self.auto_play(room, current)
             elif not current.is_bot and waited >= self.settings.turn_timeout:
-                self._log(room, f"{current.name} took too long, so the bot played for them.", current.color)
+                action = "rolled" if room.game.phase == Phase.ROLL else "moved"
+                self._log(room, f"⏰ {current.name} took too long, so we {action} for them.", current.color)
                 self.auto_play(room, current)
 
     def auto_play(self, room: Room, player: Player) -> None:

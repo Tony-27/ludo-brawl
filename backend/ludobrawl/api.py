@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from .game import Color
-from .rooms import LudoError, Room, RoomManager
+from .rooms import LudoError, Room, RoomManager, Settings
 
 log = logging.getLogger("ludobrawl")
 
@@ -65,8 +65,17 @@ class Hub:
                 del self.queues[code]
 
 
+def settings_from_env() -> Settings:
+    """Optional overrides: LUDO_BOT_DELAY, LUDO_TURN_TIMEOUT, LUDO_ROOM_TTL (seconds)."""
+    s = Settings()
+    for env, attr in (("LUDO_BOT_DELAY", "bot_delay"), ("LUDO_TURN_TIMEOUT", "turn_timeout"), ("LUDO_ROOM_TTL", "room_idle_ttl")):
+        if value := os.environ.get(env):
+            setattr(s, attr, float(value))
+    return s
+
+
 def create_app(manager: RoomManager | None = None, *, run_ticker: bool = True, static_dir: Path | None = None) -> FastAPI:
-    manager = manager or RoomManager()
+    manager = manager or RoomManager(settings_from_env())
     hub = Hub(manager)
 
     async def ticker() -> None:
