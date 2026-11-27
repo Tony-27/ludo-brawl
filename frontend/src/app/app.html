@@ -1,0 +1,9 @@
+<router-outlet />
+
+<div class="toasts" aria-live="polite">
+  @for (t of toast.toasts(); track t.id) {
+    <button type="button" class="toast" [class.error]="t.kind === 'error'" (click)="toast.dismiss(t.id)">
+      {{ t.text }}
+    </button>
+  }
+</div>

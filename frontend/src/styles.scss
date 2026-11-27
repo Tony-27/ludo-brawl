@@ -1,0 +1,89 @@
+:root {
+  --bg: #15122b;
+  --bg-2: #221c45;
+  --panel: #241f45;
+  --panel-2: #2f2858;
+  --line: #3d3570;
+  --text: #f6f3ff;
+  --muted: #aaa3cf;
+
+  --red: #ef4b5a;
+  --green: #2fb36b;
+  --yellow: #f5b80f;
+  --blue: #3f7bf0;
+  --red-soft: #fde3e6;
+  --green-soft: #def5e8;
+  --yellow-soft: #fdf1cc;
+  --blue-soft: #dde8fd;
+
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+html, body { margin: 0; min-height: 100%; }
+
+body {
+  font-family: ui-rounded, 'SF Pro Rounded', 'Segoe UI Variable Display', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: var(--text);
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #3b2a7a55, transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, #1d5a6a44, transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+  -webkit-font-smoothing: antialiased;
+}
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 22px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+input {
+  font: inherit;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  outline: none;
+  transition: border-color 0.15s;
+
+  &:focus { border-color: var(--yellow); }
+  &::placeholder { color: #6d6699; }
+}
+
+.btn {
+  font: inherit;
+  font-weight: 700;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  padding: 10px 16px;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.15s, border-color 0.15s, opacity 0.15s;
+
+  &:hover:not(:disabled) { border-color: var(--muted); }
+  &:active:not(:disabled) { transform: translateY(1px); }
+  &:disabled { opacity: 0.45; cursor: not-allowed; }
+  &:focus-visible { outline: 3px solid var(--yellow); outline-offset: 2px; }
+
+  &.primary {
+    background: linear-gradient(180deg, #ffcf3f, var(--yellow));
+    border-color: transparent;
+    color: #2a1f00;
+    box-shadow: 0 5px 0 #b88500;
+    &:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px 0 #b88500; }
+  }
+  &.ghost { background: transparent; border-color: transparent; color: var(--muted); &:hover:not(:disabled) { color: var(--text); border-color: transparent; } }
+  &.big { padding: 15px 20px; font-size: 1.1rem; }
+  &.small { padding: 6px 12px; font-size: 0.9rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; }
+}
