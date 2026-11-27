@@ -4,9 +4,12 @@
       <span class="die red">⚀</span><span class="die green">⚂</span><span class="die yellow">⚄</span><span class="die blue">⚅</span>
     </div>
     <h1>Ludo <span>Brawl</span></h1>
-    <p class="tagline">Roll, race and knock your friends back to base. 2–4 players, online, no sign-up.</p>
+    <p class="tagline">Heroes, spells and dice. Race your friends through the wilds and smash them back to camp.</p>
   </header>
 
+  @if (mode() === 'choose' && lastRoom) {
+    <a class="resume" [href]="'/room/' + lastRoom">↩ Back to room <strong>{{ lastRoom }}</strong></a>
+  }
   @if (mode() === 'choose') {
     <section class="choices">
       <button class="choice create" type="button" (click)="pick('create')">
@@ -68,11 +71,11 @@
     <details>
       <summary>How to play</summary>
       <ul>
-        <li>Roll a <b>6</b> to bring a piece out of your base.</li>
-        <li>Move clockwise around the board and up your coloured lane to the centre.</li>
-        <li>Land on an opponent to <b>knock them back</b> to base, except on ★ and start squares, which are safe.</li>
-        <li>A 6, a knockout, or getting a piece home gives you another roll. Three 6s in a row and you lose your turn.</li>
-        <li>You need the exact number to reach home. First to get all four pieces home wins!</li>
+        <li>Pick a <b>hero</b>. Each has spells: the Samurai slashes the tiles ahead, the Grand Wizard zaps and blinks.</li>
+        <li>Roll a <b>6</b> to bring a hero out of your camp, then race along the trail to the temple.</li>
+        <li>Land on an enemy to <b>smash them back to camp</b>. Start tiles, ✦ star tiles and your home path are safe.</li>
+        <li>Gain <b>mana</b> every turn, on a roll of 1, at shrines and when you get knocked out. Spend it on one spell per turn.</li>
+        <li>A 6, a knockout or reaching the temple gives another roll. First to bring every hero home wins.</li>
       </ul>
     </details>
   </footer>

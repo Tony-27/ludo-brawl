@@ -1,66 +1,112 @@
 <main class="lobby">
   <header class="top">
     <button class="btn ghost" type="button" (click)="store.leave()">← Leave</button>
+    <div class="code-pill" (click)="copy()" title="Copy invite link">
+      Room <strong>{{ room().code }}</strong>
+      <span>{{ copied() ? '✓ link copied' : '🔗 copy invite' }}</span>
+    </div>
     <span class="status" [class.online]="store.connected()">{{ store.connected() ? 'Live' : 'Reconnecting…' }}</span>
   </header>
 
-  <section class="card invite">
-    <p class="eyebrow">Room code</p>
-    <div class="code" aria-label="Room code">
-      @for (ch of room().code.split(''); track $index) {
-        <span>{{ ch }}</span>
-      }
-    </div>
-    <button class="btn" type="button" (click)="copy()">{{ copied() ? '✓ Link copied' : '🔗 Copy invite link' }}</button>
-    <p class="hint">Friends can open the link, or choose “Join a room” and type the code.</p>
-  </section>
-
-  <section class="seats">
-    @for (seat of seats(); track seat.color) {
-      <div
-        class="seat"
-        [class]="seat.color"
-        [class.empty]="!seat.player"
-        [class.mine]="seat.player?.id === store.me()?.id"
-      >
-        <div class="token" aria-hidden="true"></div>
-        @if (seat.player; as p) {
-          <div class="who">
-            <strong>{{ p.name }}</strong>
-            <small>
-              @if (p.id === room().hostId) { 👑 Host }
-              @if (p.isBot) { 🤖 Bot }
-              @if (p.id === store.me()?.id) { · You }
-              @if (!p.connected) { · offline }
-            </small>
-          </div>
-          @if (store.isHost() && p.id !== store.me()?.id) {
-            <button class="icon-btn" type="button" (click)="store.kick(p.id)" [attr.aria-label]="'Remove ' + p.name">✕</button>
-          }
-        } @else {
-          <div class="who">
-            <strong>{{ label[seat.color] }} is free</strong>
-            <small>Waiting for a player</small>
-          </div>
-          <button class="btn small" type="button" (click)="seatClick(seat.color, null)" [disabled]="store.busy()">
-            Take seat
+  <div class="grid">
+    <!-- Hero select -->
+    <section class="card heroes">
+      <h2>Choose your hero</h2>
+      <div class="hero-list">
+        @for (h of selectable(); track h.id) {
+          <button type="button" class="hero" [class.active]="h.id === me()?.hero" (click)="pickHero(h)" [disabled]="store.busy()">
+            <span class="hero-name">{{ h.name }}</span>
+            <span class="hero-title">{{ h.title }}</span>
+            @for (a of h.abilities; track a.id) {
+              <span class="ability"><b>{{ a.name }}</b> <i>{{ a.cost }}◆</i><br />{{ a.description }}</span>
+            }
+            @if (h.passive) {
+              <span class="passive">{{ h.passive }}</span>
+            }
           </button>
         }
       </div>
-    }
-  </section>
+      @if (myHero(); as h) {
+        <div class="skins">
+          <span class="label">Skin</span>
+          @for (s of h.skins; track s.id) {
+            <button type="button" class="skin" [class]="s.rarity" [class.active]="s.id === me()?.skin" (click)="pickSkin(s.id)" [disabled]="store.busy()">
+              {{ s.name }}
+              <small>{{ s.rarity }}</small>
+            </button>
+          }
+        </div>
+      }
+      @if (upcoming().length) {
+        <p class="soon">Coming soon: @for (h of upcoming(); track h.id) {<span>{{ h.name }}</span>}</p>
+      }
+    </section>
 
-  <section class="actions">
+    <!-- Seats -->
+    <section class="card seats">
+      <h2>Players</h2>
+      @for (seat of seats(); track seat.color) {
+        <div class="seat" [style.--c]="teamCss[seat.color]" [class.empty]="!seat.player" [class.mine]="seat.player?.id === me()?.id">
+          <span class="chip"></span>
+          @if (seat.player; as p) {
+            <div class="who">
+              <strong>{{ p.name }}</strong>
+              <small>
+                {{ heroName(p) }} · {{ skinName(p) }}
+                @if (p.id === room().hostId) { · 👑 }
+                @if (p.isBot) { · 🤖 }
+                @if (!p.connected) { · offline }
+              </small>
+            </div>
+            @if (store.isHost() && p.id !== me()?.id) {
+              <button class="icon-btn" type="button" (click)="store.kick(p.id)" [attr.aria-label]="'Remove ' + p.name">✕</button>
+            }
+          } @else {
+            <div class="who"><strong>{{ label[seat.color] }}</strong><small>Open seat</small></div>
+            <button class="btn small" type="button" (click)="takeSeat(seat.color)" [disabled]="store.busy()">Sit here</button>
+          }
+        </div>
+      }
+      @if (store.isHost()) {
+        <div class="bot-row">
+          <button class="btn" type="button" (click)="store.addBot()" [disabled]="full() || store.busy()">🤖 Add bot</button>
+        </div>
+      }
+    </section>
+
+    <!-- Map -->
+    <section class="card maps">
+      <h2>Battlefield</h2>
+      @for (m of store.maps(); track m.id) {
+        <button
+          type="button"
+          class="map"
+          [class.active]="m.id === room().mapId"
+          [class]="m.theme"
+          [disabled]="!store.isHost() || store.busy()"
+          (click)="store.setMap(m.id)"
+        >
+          <strong>{{ m.name }}</strong>
+          <span>{{ m.description }}</span>
+          <small>{{ m.tiles }} tiles</small>
+        </button>
+      }
+      @if (!store.isHost()) {
+        <p class="hint">The host picks the battlefield.</p>
+      }
+    </section>
+  </div>
+
+  <footer class="start">
     @if (store.isHost()) {
-      <button class="btn" type="button" (click)="store.addBot()" [disabled]="full() || store.busy()">🤖 Add bot</button>
       <button class="btn primary big" type="button" (click)="store.start()" [disabled]="!canStart() || store.busy()">
-        Start game
+        ⚔ Start the brawl
       </button>
       @if (!canStart()) {
         <p class="hint">You need at least 2 players. Invite a friend or add a bot.</p>
       }
     } @else {
-      <p class="waiting"><span class="dot"></span> Waiting for the host to start the game…</p>
+      <p class="waiting"><span class="dot"></span> Waiting for the host to start…</p>
     }
-  </section>
+  </footer>
 </main>

@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import type { SceneEvent } from '../game/three/board-scene';
+import type { SceneCue } from '../engine/presentation/event-player';
 
 const MUSIC_KEY = 'ludo-brawl:music';
 const SFX_KEY = 'ludo-brawl:sfx';
@@ -318,7 +318,7 @@ export class SoundService {
   }
 
   // ---------------------------------------------------------------- sound effects
-  play(name: 'dice' | 'yourTurn' | 'gameOver' | 'click' | SceneEvent) {
+  play(name: 'dice' | 'yourTurn' | 'gameOver' | 'click' | 'hop' | 'victory' | SceneCue) {
     if (!this.sfxOn()) return;
     const ctx = this.ensure();
     if (!ctx) return;
@@ -335,7 +335,33 @@ export class SoundService {
         break;
       }
       case 'hop':
-        this.tone(t, 'sine', 520, 860, 0.07, 0.1);
+      case 'step':
+        this.noiseHit(t, 0.06, 0.04, 'lowpass', 700, this.sfxBus);
+        this.tone(t, 'sine', 140, 90, 0.06, 0.08);
+        break;
+      case 'cast':
+        this.tone(t, 'triangle', 300, 900, 0.45, 0.07, true);
+        this.noiseHit(t, 0.06, 0.4, 'bandpass', 2400, this.sfxBus);
+        break;
+      case 'slash':
+        this.noiseHit(t, 0.35, 0.22, 'highpass', 2500, this.sfxBus);
+        this.tone(t, 'sawtooth', 900, 200, 0.2, 0.05);
+        break;
+      case 'zap':
+        for (let i = 0; i < 6; i++) this.noiseHit(t + i * 0.03, 0.3, 0.05, 'bandpass', 3000 + i * 400, this.sfxBus);
+        this.tone(t, 'square', 1800, 120, 0.35, 0.08, true);
+        this.tone(t + 0.05, 'sine', 90, 40, 0.5, 0.5);
+        break;
+      case 'blink':
+        this.tone(t, 'sine', 400, 1600, 0.25, 0.1, true);
+        this.tone(t + 0.25, 'sine', 1600, 600, 0.25, 0.08, true);
+        break;
+      case 'blocked':
+        this.tone(t, 'triangle', 1500, 1400, 0.4, 0.12, true);
+        this.tone(t, 'triangle', 2250, 2100, 0.3, 0.06, true);
+        break;
+      case 'mana':
+        this.notes(t, [86, 90, 93], 0.06, 'sine', 0.08, 0.3);
         break;
       case 'summon':
         this.notes(t, [62, 69, 74, 81], 0.06, 'triangle', 0.12, 0.2);
@@ -381,7 +407,4 @@ export class SoundService {
     }
   }
 
-  sceneEvent(e: SceneEvent) {
-    this.play(e);
-  }
 }
