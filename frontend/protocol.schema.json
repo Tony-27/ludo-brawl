@@ -1,0 +1,1096 @@
+{
+ "$defs": {
+  "AbilityCast": {
+   "properties": {
+    "ability": {
+     "type": "string"
+    },
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "hero": {
+     "type": "string"
+    },
+    "piece": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "targetColor": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Color"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "targetPiece": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "tiles": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "type": {
+     "const": "abilityCast",
+     "default": "abilityCast",
+     "type": "string"
+    }
+   },
+   "required": [
+    "ability",
+    "color",
+    "hero",
+    "piece",
+    "targetColor",
+    "targetPiece",
+    "tiles",
+    "type"
+   ],
+   "title": "AbilityCast",
+   "type": "object"
+  },
+  "Blocked": {
+   "description": "An attack hit a piece that was protected.",
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "reason": {
+     "enum": [
+      "safeTile",
+      "shield"
+     ],
+     "type": "string"
+    },
+    "type": {
+     "const": "blocked",
+     "default": "blocked",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "piece",
+    "reason",
+    "type"
+   ],
+   "title": "Blocked",
+   "type": "object"
+  },
+  "Captured": {
+   "description": "A piece was landed on and sent back to its camp.",
+   "properties": {
+    "at": {
+     "type": "integer"
+    },
+    "byColor": {
+     "$ref": "#/$defs/Color"
+    },
+    "byPiece": {
+     "type": "integer"
+    },
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "captured",
+     "default": "captured",
+     "type": "string"
+    }
+   },
+   "required": [
+    "at",
+    "byColor",
+    "byPiece",
+    "color",
+    "piece",
+    "type"
+   ],
+   "title": "Captured",
+   "type": "object"
+  },
+  "CastCommand": {
+   "properties": {
+    "ability": {
+     "type": "string"
+    },
+    "target": {
+     "additionalProperties": true,
+     "type": "object"
+    },
+    "type": {
+     "const": "cast",
+     "type": "string"
+    }
+   },
+   "required": [
+    "ability",
+    "target",
+    "type"
+   ],
+   "title": "CastCommand",
+   "type": "object"
+  },
+  "Color": {
+   "enum": [
+    "red",
+    "green",
+    "yellow",
+    "blue"
+   ],
+   "title": "Color",
+   "type": "string"
+  },
+  "ErrorMessage": {
+   "properties": {
+    "message": {
+     "type": "string"
+    },
+    "type": {
+     "const": "error",
+     "default": "error",
+     "type": "string"
+    }
+   },
+   "required": [
+    "message",
+    "type"
+   ],
+   "title": "ErrorMessage",
+   "type": "object"
+  },
+  "EventsMessage": {
+   "description": "Ordered game events followed by the resulting state.\n\nClients animate `events` in order, then adopt `room` as the truth.",
+   "properties": {
+    "events": {
+     "items": {
+      "discriminator": {
+       "mapping": {
+        "abilityCast": "#/$defs/AbilityCast",
+        "blocked": "#/$defs/Blocked",
+        "captured": "#/$defs/Captured",
+        "gameOver": "#/$defs/GameOver",
+        "knockedBack": "#/$defs/KnockedBack",
+        "manaChanged": "#/$defs/ManaChanged",
+        "moved": "#/$defs/Moved",
+        "pieceFinished": "#/$defs/PieceFinished",
+        "playerFinished": "#/$defs/PlayerFinished",
+        "rolled": "#/$defs/Rolled",
+        "statusChanged": "#/$defs/StatusChanged",
+        "teleported": "#/$defs/Teleported",
+        "turnPassed": "#/$defs/TurnPassed",
+        "turnStarted": "#/$defs/TurnStarted"
+       },
+       "propertyName": "type"
+      },
+      "oneOf": [
+       {
+        "$ref": "#/$defs/TurnStarted"
+       },
+       {
+        "$ref": "#/$defs/ManaChanged"
+       },
+       {
+        "$ref": "#/$defs/Rolled"
+       },
+       {
+        "$ref": "#/$defs/TurnPassed"
+       },
+       {
+        "$ref": "#/$defs/Moved"
+       },
+       {
+        "$ref": "#/$defs/Captured"
+       },
+       {
+        "$ref": "#/$defs/AbilityCast"
+       },
+       {
+        "$ref": "#/$defs/KnockedBack"
+       },
+       {
+        "$ref": "#/$defs/Teleported"
+       },
+       {
+        "$ref": "#/$defs/Blocked"
+       },
+       {
+        "$ref": "#/$defs/StatusChanged"
+       },
+       {
+        "$ref": "#/$defs/PieceFinished"
+       },
+       {
+        "$ref": "#/$defs/PlayerFinished"
+       },
+       {
+        "$ref": "#/$defs/GameOver"
+       }
+      ]
+     },
+     "type": "array"
+    },
+    "room": {
+     "$ref": "#/$defs/RoomView"
+    },
+    "seq": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "events",
+     "default": "events",
+     "type": "string"
+    }
+   },
+   "required": [
+    "events",
+    "room",
+    "seq",
+    "type"
+   ],
+   "title": "EventsMessage",
+   "type": "object"
+  },
+  "GameOver": {
+   "properties": {
+    "ranking": {
+     "items": {
+      "$ref": "#/$defs/Color"
+     },
+     "type": "array"
+    },
+    "type": {
+     "const": "gameOver",
+     "default": "gameOver",
+     "type": "string"
+    }
+   },
+   "required": [
+    "ranking",
+    "type"
+   ],
+   "title": "GameOver",
+   "type": "object"
+  },
+  "GuestSession": {
+   "properties": {
+    "id": {
+     "type": "string"
+    },
+    "name": {
+     "type": "string"
+    },
+    "token": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "id",
+    "name",
+    "token"
+   ],
+   "title": "GuestSession",
+   "type": "object"
+  },
+  "HelloMessage": {
+   "properties": {
+    "protocol": {
+     "default": 1,
+     "type": "integer"
+    },
+    "room": {
+     "$ref": "#/$defs/RoomView"
+    },
+    "type": {
+     "const": "hello",
+     "default": "hello",
+     "type": "string"
+    },
+    "you": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "protocol",
+    "room",
+    "type",
+    "you"
+   ],
+   "title": "HelloMessage",
+   "type": "object"
+  },
+  "KnockedBack": {
+   "properties": {
+    "ability": {
+     "type": "string"
+    },
+    "byColor": {
+     "$ref": "#/$defs/Color"
+    },
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "from": {
+     "type": "integer"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "to": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "knockedBack",
+     "default": "knockedBack",
+     "type": "string"
+    }
+   },
+   "required": [
+    "ability",
+    "byColor",
+    "color",
+    "from",
+    "piece",
+    "to",
+    "type"
+   ],
+   "title": "KnockedBack",
+   "type": "object"
+  },
+  "ManaChanged": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "delta": {
+     "type": "integer"
+    },
+    "mana": {
+     "type": "integer"
+    },
+    "reason": {
+     "enum": [
+      "turn",
+      "rolledOne",
+      "shrine",
+      "knockedOut",
+      "knockedBack",
+      "cast",
+      "passive"
+     ],
+     "type": "string"
+    },
+    "type": {
+     "const": "manaChanged",
+     "default": "manaChanged",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "delta",
+    "mana",
+    "reason",
+    "type"
+   ],
+   "title": "ManaChanged",
+   "type": "object"
+  },
+  "MatchView": {
+   "properties": {
+    "castUsed": {
+     "type": "boolean"
+    },
+    "current": {
+     "$ref": "#/$defs/Color"
+    },
+    "lastRoll": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "legalPieces": {
+     "items": {
+      "type": "integer"
+     },
+     "type": "array"
+    },
+    "mapId": {
+     "type": "string"
+    },
+    "phase": {
+     "enum": [
+      "roll",
+      "move",
+      "over"
+     ],
+     "type": "string"
+    },
+    "ranking": {
+     "items": {
+      "$ref": "#/$defs/Color"
+     },
+     "type": "array"
+    },
+    "teams": {
+     "additionalProperties": {
+      "$ref": "#/$defs/TeamView"
+     },
+     "propertyNames": {
+      "$ref": "#/$defs/Color"
+     },
+     "type": "object"
+    },
+    "turn": {
+     "type": "integer"
+    },
+    "turnOrder": {
+     "items": {
+      "$ref": "#/$defs/Color"
+     },
+     "type": "array"
+    },
+    "turnTimeLeftMs": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [
+    "castUsed",
+    "current",
+    "lastRoll",
+    "legalPieces",
+    "mapId",
+    "phase",
+    "ranking",
+    "teams",
+    "turn",
+    "turnOrder",
+    "turnTimeLeftMs"
+   ],
+   "title": "MatchView",
+   "type": "object"
+  },
+  "MoveCommand": {
+   "properties": {
+    "piece": {
+     "maximum": 7,
+     "minimum": 0,
+     "type": "integer"
+    },
+    "type": {
+     "const": "move",
+     "type": "string"
+    }
+   },
+   "required": [
+    "piece",
+    "type"
+   ],
+   "title": "MoveCommand",
+   "type": "object"
+  },
+  "Moved": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "from": {
+     "type": "integer"
+    },
+    "path": {
+     "items": {
+      "type": "integer"
+     },
+     "type": "array"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "to": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "moved",
+     "default": "moved",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "from",
+    "path",
+    "piece",
+    "to",
+    "type"
+   ],
+   "title": "Moved",
+   "type": "object"
+  },
+  "PieceFinished": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "pieceFinished",
+     "default": "pieceFinished",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "piece",
+    "type"
+   ],
+   "title": "PieceFinished",
+   "type": "object"
+  },
+  "PingCommand": {
+   "properties": {
+    "type": {
+     "const": "ping",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type"
+   ],
+   "title": "PingCommand",
+   "type": "object"
+  },
+  "PlayerFinished": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "place": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "playerFinished",
+     "default": "playerFinished",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "place",
+    "type"
+   ],
+   "title": "PlayerFinished",
+   "type": "object"
+  },
+  "PlayerView": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "connected": {
+     "type": "boolean"
+    },
+    "hero": {
+     "type": "string"
+    },
+    "id": {
+     "type": "string"
+    },
+    "isBot": {
+     "type": "boolean"
+    },
+    "name": {
+     "type": "string"
+    },
+    "skin": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "connected",
+    "hero",
+    "id",
+    "isBot",
+    "name",
+    "skin"
+   ],
+   "title": "PlayerView",
+   "type": "object"
+  },
+  "PongMessage": {
+   "properties": {
+    "type": {
+     "const": "pong",
+     "default": "pong",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type"
+   ],
+   "title": "PongMessage",
+   "type": "object"
+  },
+  "ResyncCommand": {
+   "properties": {
+    "type": {
+     "const": "resync",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type"
+   ],
+   "title": "ResyncCommand",
+   "type": "object"
+  },
+  "RollCommand": {
+   "properties": {
+    "type": {
+     "const": "roll",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type"
+   ],
+   "title": "RollCommand",
+   "type": "object"
+  },
+  "Rolled": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "type": {
+     "const": "rolled",
+     "default": "rolled",
+     "type": "string"
+    },
+    "value": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "color",
+    "type",
+    "value"
+   ],
+   "title": "Rolled",
+   "type": "object"
+  },
+  "RoomView": {
+   "properties": {
+    "code": {
+     "type": "string"
+    },
+    "hostId": {
+     "type": "string"
+    },
+    "mapId": {
+     "type": "string"
+    },
+    "match": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/MatchView"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "players": {
+     "items": {
+      "$ref": "#/$defs/PlayerView"
+     },
+     "type": "array"
+    },
+    "seq": {
+     "type": "integer"
+    },
+    "state": {
+     "enum": [
+      "lobby",
+      "playing",
+      "finished"
+     ],
+     "type": "string"
+    },
+    "version": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "code",
+    "hostId",
+    "mapId",
+    "match",
+    "players",
+    "seq",
+    "state",
+    "version"
+   ],
+   "title": "RoomView",
+   "type": "object"
+  },
+  "SnapshotMessage": {
+   "description": "Full state; sent on connect, on resync and for lobby changes.",
+   "properties": {
+    "room": {
+     "$ref": "#/$defs/RoomView"
+    },
+    "type": {
+     "const": "snapshot",
+     "default": "snapshot",
+     "type": "string"
+    }
+   },
+   "required": [
+    "room",
+    "type"
+   ],
+   "title": "SnapshotMessage",
+   "type": "object"
+  },
+  "StatusChanged": {
+   "properties": {
+    "active": {
+     "type": "boolean"
+    },
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "status": {
+     "enum": [
+      "shield",
+      "rooted"
+     ],
+     "type": "string"
+    },
+    "type": {
+     "const": "statusChanged",
+     "default": "statusChanged",
+     "type": "string"
+    }
+   },
+   "required": [
+    "active",
+    "color",
+    "piece",
+    "status",
+    "type"
+   ],
+   "title": "StatusChanged",
+   "type": "object"
+  },
+  "TeamView": {
+   "properties": {
+    "finish": {
+     "type": "integer"
+    },
+    "hero": {
+     "type": "string"
+    },
+    "mana": {
+     "type": "integer"
+    },
+    "maxMana": {
+     "type": "integer"
+    },
+    "pieces": {
+     "items": {
+      "type": "integer"
+     },
+     "type": "array"
+    },
+    "statuses": {
+     "items": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array"
+     },
+     "type": "array"
+    }
+   },
+   "required": [
+    "finish",
+    "hero",
+    "mana",
+    "maxMana",
+    "pieces",
+    "statuses"
+   ],
+   "title": "TeamView",
+   "type": "object"
+  },
+  "Teleported": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "from": {
+     "type": "integer"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "to": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "teleported",
+     "default": "teleported",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "from",
+    "piece",
+    "to",
+    "type"
+   ],
+   "title": "Teleported",
+   "type": "object"
+  },
+  "TurnPassed": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "reason": {
+     "enum": [
+      "noMoves",
+      "threeSixes"
+     ],
+     "type": "string"
+    },
+    "type": {
+     "const": "turnPassed",
+     "default": "turnPassed",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "reason",
+    "type"
+   ],
+   "title": "TurnPassed",
+   "type": "object"
+  },
+  "TurnStarted": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "turn": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "turnStarted",
+     "default": "turnStarted",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "turn",
+    "type"
+   ],
+   "title": "TurnStarted",
+   "type": "object"
+  }
+ },
+ "description": "Ludo Brawl wire protocol v1. Generated - do not edit.",
+ "properties": {
+  "client": {
+   "discriminator": {
+    "mapping": {
+     "cast": "#/$defs/CastCommand",
+     "move": "#/$defs/MoveCommand",
+     "ping": "#/$defs/PingCommand",
+     "resync": "#/$defs/ResyncCommand",
+     "roll": "#/$defs/RollCommand"
+    },
+    "propertyName": "type"
+   },
+   "oneOf": [
+    {
+     "$ref": "#/$defs/RollCommand"
+    },
+    {
+     "$ref": "#/$defs/MoveCommand"
+    },
+    {
+     "$ref": "#/$defs/CastCommand"
+    },
+    {
+     "$ref": "#/$defs/PingCommand"
+    },
+    {
+     "$ref": "#/$defs/ResyncCommand"
+    }
+   ],
+   "title": "ClientMessage"
+  },
+  "event": {
+   "discriminator": {
+    "mapping": {
+     "abilityCast": "#/$defs/AbilityCast",
+     "blocked": "#/$defs/Blocked",
+     "captured": "#/$defs/Captured",
+     "gameOver": "#/$defs/GameOver",
+     "knockedBack": "#/$defs/KnockedBack",
+     "manaChanged": "#/$defs/ManaChanged",
+     "moved": "#/$defs/Moved",
+     "pieceFinished": "#/$defs/PieceFinished",
+     "playerFinished": "#/$defs/PlayerFinished",
+     "rolled": "#/$defs/Rolled",
+     "statusChanged": "#/$defs/StatusChanged",
+     "teleported": "#/$defs/Teleported",
+     "turnPassed": "#/$defs/TurnPassed",
+     "turnStarted": "#/$defs/TurnStarted"
+    },
+    "propertyName": "type"
+   },
+   "oneOf": [
+    {
+     "$ref": "#/$defs/TurnStarted"
+    },
+    {
+     "$ref": "#/$defs/ManaChanged"
+    },
+    {
+     "$ref": "#/$defs/Rolled"
+    },
+    {
+     "$ref": "#/$defs/TurnPassed"
+    },
+    {
+     "$ref": "#/$defs/Moved"
+    },
+    {
+     "$ref": "#/$defs/Captured"
+    },
+    {
+     "$ref": "#/$defs/AbilityCast"
+    },
+    {
+     "$ref": "#/$defs/KnockedBack"
+    },
+    {
+     "$ref": "#/$defs/Teleported"
+    },
+    {
+     "$ref": "#/$defs/Blocked"
+    },
+    {
+     "$ref": "#/$defs/StatusChanged"
+    },
+    {
+     "$ref": "#/$defs/PieceFinished"
+    },
+    {
+     "$ref": "#/$defs/PlayerFinished"
+    },
+    {
+     "$ref": "#/$defs/GameOver"
+    }
+   ],
+   "title": "GameEvent"
+  },
+  "guest": {
+   "$ref": "#/$defs/GuestSession"
+  },
+  "room": {
+   "$ref": "#/$defs/RoomView"
+  },
+  "server": {
+   "discriminator": {
+    "mapping": {
+     "error": "#/$defs/ErrorMessage",
+     "events": "#/$defs/EventsMessage",
+     "hello": "#/$defs/HelloMessage",
+     "pong": "#/$defs/PongMessage",
+     "snapshot": "#/$defs/SnapshotMessage"
+    },
+    "propertyName": "type"
+   },
+   "oneOf": [
+    {
+     "$ref": "#/$defs/HelloMessage"
+    },
+    {
+     "$ref": "#/$defs/SnapshotMessage"
+    },
+    {
+     "$ref": "#/$defs/EventsMessage"
+    },
+    {
+     "$ref": "#/$defs/ErrorMessage"
+    },
+    {
+     "$ref": "#/$defs/PongMessage"
+    }
+   ],
+   "title": "ServerMessage"
+  }
+ },
+ "required": [
+  "server",
+  "client",
+  "event",
+  "room",
+  "guest"
+ ],
+ "title": "Protocol",
+ "type": "object"
+}

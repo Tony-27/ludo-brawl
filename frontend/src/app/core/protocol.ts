@@ -1,0 +1,357 @@
+/* Generated from backend/app/realtime/protocol.py by npm run gen:protocol. Do not edit. */
+
+export type ClientMessage = RollCommand | MoveCommand | CastCommand | PingCommand | ResyncCommand;
+export type GameEvent =
+  | TurnStarted
+  | ManaChanged
+  | Rolled
+  | TurnPassed
+  | Moved
+  | Captured
+  | AbilityCast
+  | KnockedBack
+  | Teleported
+  | Blocked
+  | StatusChanged
+  | PieceFinished
+  | PlayerFinished
+  | GameOver;
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Color".
+ */
+export type Color = "red" | "green" | "yellow" | "blue";
+export type ServerMessage = HelloMessage | SnapshotMessage | EventsMessage | ErrorMessage | PongMessage;
+
+/**
+ * Ludo Brawl wire protocol v1. Generated - do not edit.
+ */
+export interface Protocol {
+  client: ClientMessage;
+  event: GameEvent;
+  guest: GuestSession;
+  room: RoomView;
+  server: ServerMessage;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "RollCommand".
+ */
+export interface RollCommand {
+  type: "roll";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "MoveCommand".
+ */
+export interface MoveCommand {
+  piece: number;
+  type: "move";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "CastCommand".
+ */
+export interface CastCommand {
+  ability: string;
+  target: {
+    [k: string]: unknown;
+  };
+  type: "cast";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "PingCommand".
+ */
+export interface PingCommand {
+  type: "ping";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "ResyncCommand".
+ */
+export interface ResyncCommand {
+  type: "resync";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "TurnStarted".
+ */
+export interface TurnStarted {
+  color: Color;
+  turn: number;
+  type: "turnStarted";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "ManaChanged".
+ */
+export interface ManaChanged {
+  color: Color;
+  delta: number;
+  mana: number;
+  reason: "turn" | "rolledOne" | "shrine" | "knockedOut" | "knockedBack" | "cast" | "passive";
+  type: "manaChanged";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Rolled".
+ */
+export interface Rolled {
+  color: Color;
+  type: "rolled";
+  value: number;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "TurnPassed".
+ */
+export interface TurnPassed {
+  color: Color;
+  reason: "noMoves" | "threeSixes";
+  type: "turnPassed";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Moved".
+ */
+export interface Moved {
+  color: Color;
+  from: number;
+  path: number[];
+  piece: number;
+  to: number;
+  type: "moved";
+}
+/**
+ * A piece was landed on and sent back to its camp.
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Captured".
+ */
+export interface Captured {
+  at: number;
+  byColor: Color;
+  byPiece: number;
+  color: Color;
+  piece: number;
+  type: "captured";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "AbilityCast".
+ */
+export interface AbilityCast {
+  ability: string;
+  color: Color;
+  hero: string;
+  piece: number | null;
+  targetColor: Color | null;
+  targetPiece: number | null;
+  tiles: string[];
+  type: "abilityCast";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "KnockedBack".
+ */
+export interface KnockedBack {
+  ability: string;
+  byColor: Color;
+  color: Color;
+  from: number;
+  piece: number;
+  to: number;
+  type: "knockedBack";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Teleported".
+ */
+export interface Teleported {
+  color: Color;
+  from: number;
+  piece: number;
+  to: number;
+  type: "teleported";
+}
+/**
+ * An attack hit a piece that was protected.
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Blocked".
+ */
+export interface Blocked {
+  color: Color;
+  piece: number;
+  reason: "safeTile" | "shield";
+  type: "blocked";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "StatusChanged".
+ */
+export interface StatusChanged {
+  active: boolean;
+  color: Color;
+  piece: number;
+  status: "shield" | "rooted";
+  type: "statusChanged";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "PieceFinished".
+ */
+export interface PieceFinished {
+  color: Color;
+  piece: number;
+  type: "pieceFinished";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "PlayerFinished".
+ */
+export interface PlayerFinished {
+  color: Color;
+  place: number;
+  type: "playerFinished";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "GameOver".
+ */
+export interface GameOver {
+  ranking: Color[];
+  type: "gameOver";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "GuestSession".
+ */
+export interface GuestSession {
+  id: string;
+  name: string;
+  token: string;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "RoomView".
+ */
+export interface RoomView {
+  code: string;
+  hostId: string;
+  mapId: string;
+  match: MatchView | null;
+  players: PlayerView[];
+  seq: number;
+  state: "lobby" | "playing" | "finished";
+  version: number;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "MatchView".
+ */
+export interface MatchView {
+  castUsed: boolean;
+  current: Color;
+  lastRoll: number | null;
+  legalPieces: number[];
+  mapId: string;
+  phase: "roll" | "move" | "over";
+  ranking: Color[];
+  teams: {
+    [k: string]: TeamView;
+  };
+  turn: number;
+  turnOrder: Color[];
+  turnTimeLeftMs: number | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "TeamView".
+ */
+export interface TeamView {
+  finish: number;
+  hero: string;
+  mana: number;
+  maxMana: number;
+  pieces: number[];
+  statuses: string[][];
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "PlayerView".
+ */
+export interface PlayerView {
+  color: Color;
+  connected: boolean;
+  hero: string;
+  id: string;
+  isBot: boolean;
+  name: string;
+  skin: string;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "HelloMessage".
+ */
+export interface HelloMessage {
+  protocol: number;
+  room: RoomView;
+  type: "hello";
+  you: string;
+}
+/**
+ * Full state; sent on connect, on resync and for lobby changes.
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "SnapshotMessage".
+ */
+export interface SnapshotMessage {
+  room: RoomView;
+  type: "snapshot";
+}
+/**
+ * Ordered game events followed by the resulting state.
+ *
+ * Clients animate `events` in order, then adopt `room` as the truth.
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "EventsMessage".
+ */
+export interface EventsMessage {
+  events: (
+    | TurnStarted
+    | ManaChanged
+    | Rolled
+    | TurnPassed
+    | Moved
+    | Captured
+    | AbilityCast
+    | KnockedBack
+    | Teleported
+    | Blocked
+    | StatusChanged
+    | PieceFinished
+    | PlayerFinished
+    | GameOver
+  )[];
+  room: RoomView;
+  seq: number;
+  type: "events";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "ErrorMessage".
+ */
+export interface ErrorMessage {
+  message: string;
+  type: "error";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "PongMessage".
+ */
+export interface PongMessage {
+  type: "pong";
+}

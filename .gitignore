@@ -22,3 +22,8 @@ Thumbs.db
 # Env
 .env
 .claude/
+
+# Local databases
+*.db
+backend/.env
+.ruff_cache/
