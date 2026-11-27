@@ -1,5 +1,14 @@
 <router-outlet />
 
+<div class="audio-toggles">
+  <button type="button" (click)="sound.toggleMusic()" [class.off]="!sound.musicOn()" [attr.aria-pressed]="sound.musicOn()" [title]="sound.musicOn() ? 'Mute music' : 'Play music'">
+    🎵
+  </button>
+  <button type="button" (click)="sound.toggleSfx()" [class.off]="!sound.sfxOn()" [attr.aria-pressed]="sound.sfxOn()" [title]="sound.sfxOn() ? 'Mute sound effects' : 'Turn on sound effects'">
+    {{ sound.sfxOn() ? '🔊' : '🔇' }}
+  </button>
+</div>
+
 <div class="toasts" aria-live="polite">
   @for (t of toast.toasts(); track t.id) {
     <button type="button" class="toast" [class.error]="t.kind === 'error'" (click)="toast.dismiss(t.id)">

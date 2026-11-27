@@ -2,6 +2,7 @@ import { Component, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { AutofocusDirective } from '../core/autofocus.directive';
+import { GuestService } from '../core/guest.service';
 import { RoomStore } from '../core/room-store.service';
 
 type Mode = 'choose' | 'create' | 'join';
@@ -17,7 +18,8 @@ export class HomePage implements OnInit {
   private route = inject(ActivatedRoute);
 
   protected mode = signal<Mode>('choose');
-  protected name = this.store.savedName;
+  protected name = inject(GuestService).name;
+  protected lastRoom = this.store.lastRoom;
   protected code = '';
 
   ngOnInit() {
@@ -49,7 +51,7 @@ export class HomePage implements OnInit {
     if (this.mode() === 'create') {
       this.store.create(this.name.trim());
     } else if (this.mode() === 'join' && this.codeOk) {
-      this.store.join(this.code, this.name.trim());
+      this.store.join(this.name.trim(), this.code);
     }
   }
 }

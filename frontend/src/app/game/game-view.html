@@ -1,91 +1,104 @@
-<main class="game">
-  <header class="bar">
-    <button class="btn ghost" type="button" (click)="store.leave()">← Leave</button>
-    <div class="room-code">Room <strong>{{ room().code }}</strong></div>
-    <span class="status-dot" [class.online]="store.connected()" [title]="store.connected() ? 'Live' : 'Reconnecting…'"></span>
+<div class="stage">
+  <canvas #canvas class="canvas" touch-action="none"></canvas>
+
+  @if (!ready()) {
+    <div class="loading">
+      <h1>Ludo <span>Brawl</span></h1>
+      <p>Preparing the battlefield…</p>
+      <div class="bar"><div class="fill" [style.width.%]="loading() * 100"></div></div>
+    </div>
+  }
+
+  <!-- Top bar -->
+  <header class="topbar">
+    <button class="glass btn-ghost" type="button" (click)="store.leave()">← Leave</button>
+    <div class="glass room">Room <strong>{{ room().code }}</strong></div>
+    <div class="glass quality">
+      <button type="button" [class.on]="quality() === 'high'" (click)="setQuality('high')">High</button>
+      <button type="button" [class.on]="quality() === 'medium'" (click)="setQuality('medium')">Fast</button>
+    </div>
   </header>
 
-  <div class="layout">
-    <section class="board-wrap">
-      <app-board
-        [game]="game()"
-        [players]="room().players"
-        [myColor]="myColor()"
-        [canMove]="canMove()"
-        (move)="store.move($event)"
-      />
-    </section>
-
-    <aside class="side">
-      <section class="card turn" [class]="game().current">
-        <app-dice
-          [value]="game().lastRoll"
-          [rollSeq]="game().rollSeq"
-          [color]="game().current"
-          [enabled]="canRoll()"
-          (roll)="store.roll()"
-        />
-        <div class="turn-text">
-          <p class="status">{{ status() }}</p>
-          @if (canRoll()) {
-            <p class="hint">Click the dice or press Space</p>
-          }
-          @if (timeLeft(); as t) {
-            <div class="timer" [class.low]="t <= 10">
-              <div class="fill" [style.width.%]="timePct()"></div>
-            </div>
-            <p class="hint">{{ t }}s left before auto-play</p>
+  <!-- Player plates -->
+  <aside class="plates">
+    @for (p of plates(); track p.color) {
+      <div class="glass plate" [class.active]="p.active" [class.me]="p.color === myColor()" [style.--c]="teamCss[p.color]">
+        <div class="plate-top">
+          <span class="chip"></span>
+          <span class="pname">{{ p.player?.name ?? label[p.color] }}</span>
+          @if (p.rank !== null) {
+            <span class="medal">{{ medals[p.rank] }}</span>
+          } @else {
+            <span class="home">{{ p.home }}/{{ p.pieces }}</span>
           }
         </div>
-      </section>
+        <div class="plate-bottom">
+          <span class="hero">{{ p.hero }}@if (p.player?.isBot) { · 🤖 }@if (p.player && !p.player.connected) { · offline }</span>
+          <span class="mana" [attr.aria-label]="p.mana + ' mana'">
+            @for (o of orbs; track o) {
+              <i [class.full]="o < p.mana"></i>
+            }
+          </span>
+        </div>
+      </div>
+    }
+  </aside>
 
-      <section class="card players">
-        @for (s of seats(); track s.color) {
-          <div class="player" [class]="s.color" [class.active]="s.active" [class.me]="s.player?.id === store.me()?.id">
-            <span class="chip"></span>
-            <span class="name">
-              {{ s.player?.name ?? label[s.color] }}
-              @if (s.player?.isBot) {
-                <small>🤖</small>
-              }
-              @if (s.player && !s.player.connected) {
-                <small class="off">offline</small>
-              }
-              @if (s.player?.id === store.me()?.id) {
-                <small>(you)</small>
-              }
-            </span>
-            <span class="score" [attr.aria-label]="s.home + ' of 4 pieces home'">
-              @if (s.rank !== null) {
-                {{ medals[s.rank] }}
-              } @else {
-                @for (i of pipSlots; track i) {
-                  <span class="pip" [class.done]="i < s.home"></span>
-                }
-              }
-            </span>
-          </div>
+  <!-- Battle feed -->
+  <aside class="feed">
+    @for (line of feed(); track line.id) {
+      <p [style.--c]="line.color ? teamCss[line.color] : '#fff'">{{ line.text }}</p>
+    }
+  </aside>
+
+  <!-- Action bar -->
+  <footer class="actionbar">
+    <div class="glass status-line" [class.mine]="store.myTurn()">
+      {{ status() }}
+      @if (timeLeft(); as t) {
+        <span class="timer" [class.low]="t <= 10">{{ t }}s</span>
+      }
+    </div>
+    <div class="actions">
+      @for (a of myHero()?.abilities ?? []; track a.id; let i = $index) {
+        <button
+          type="button"
+          class="spell"
+          [class.armed]="targeting()?.id === a.id"
+          [disabled]="!canCast(a) && targeting()?.id !== a.id"
+          (click)="toggleAbility(a)"
+          [title]="a.description"
+        >
+          <span class="key">{{ i + 1 }}</span>
+          <span class="sname">{{ a.name }}</span>
+          <span class="cost">{{ a.cost }}◆</span>
+        </button>
+      }
+      <button type="button" class="roll" [class.ready]="canRoll()" [disabled]="!canRoll()" (click)="roll()">
+        <span>ROLL</span>
+        <small>Space</small>
+      </button>
+    </div>
+    @if (myTeam(); as t) {
+      <div class="my-mana">
+        @for (o of orbs; track o) {
+          <i [class.full]="o < t.mana"></i>
         }
-      </section>
+        <span>{{ t.mana }}/{{ t.maxMana }} mana</span>
+      </div>
+    }
+  </footer>
 
-      <section class="card log" #log aria-label="Game log">
-        @for (entry of room().log; track entry.id) {
-          <p [class]="entry.color ?? ''">{{ entry.text }}</p>
-        }
-      </section>
-    </aside>
-  </div>
-
-  @if (finished() && showResults()) {
-    <div class="overlay" role="dialog" aria-modal="true" aria-labelledby="results-title">
+  @if (showResults() && finished()) {
+    <div class="overlay" role="dialog" aria-modal="true">
       <div class="card results">
-        <h2 id="results-title">🎉 {{ podium()[0]?.player?.name ?? 'Someone' }} wins!</h2>
+        <h2>🏆 {{ playerOf(match().ranking[0])?.name ?? 'Someone' }} wins!</h2>
         <ol>
-          @for (p of podium(); track p.color) {
-            <li [class]="p.color">
-              <span class="medal">{{ p.medal }}</span>
+          @for (c of match().ranking; track c; let i = $index) {
+            <li [style.--c]="teamCss[c]">
+              <span class="medal">{{ medals[i] }}</span>
               <span class="chip"></span>
-              {{ p.player?.name ?? label[p.color] }}
+              {{ playerOf(c)?.name ?? label[c] }}
             </li>
           }
         </ol>
@@ -95,10 +108,10 @@
           } @else {
             <p class="hint">Waiting for the host to start a rematch…</p>
           }
-          <button class="btn ghost" type="button" (click)="showResults.set(false)">View board</button>
+          <button class="btn ghost" type="button" (click)="showResults.set(false)">View battlefield</button>
           <button class="btn ghost" type="button" (click)="store.leave()">Leave room</button>
         </div>
       </div>
     </div>
   }
-</main>
+</div>

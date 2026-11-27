@@ -46,16 +46,16 @@ export class RoomPage implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
 
-  ngOnInit() {
+  async ngOnInit() {
     const code = (this.route.snapshot.paramMap.get('code') ?? '').toUpperCase();
-    if (!this.store.resume(code)) {
+    if (!(await this.store.resume(code))) {
       // Opened a shared link without being in the room yet: offer to join.
-      this.router.navigate(['/'], { queryParams: { join: code } });
+      await this.router.navigate(['/'], { queryParams: { join: code } });
     }
   }
 
   ngOnDestroy() {
     // Navigating away keeps the seat; the session can be resumed from the link.
-    if (this.store.session()) this.store.detach();
+    this.store.detach();
   }
 }

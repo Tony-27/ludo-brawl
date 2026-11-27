@@ -1,106 +1,103 @@
-# Ludo Brawl 🎲
+# Ludo Brawl ⚔️🎲
 
-Online multiplayer Ludo for 2–4 players. Open the site, **create a room** or **join one with a code**, fill empty seats with friends or bots, and play.
+A fantasy 3D board brawler built on Ludo: pick a hero, roll, race through the wilds, cast spells and smash rivals back to camp. 2–4 players online, bots for empty seats.
 
-- **Backend:** Python 3.11+, FastAPI, WebSockets (`backend/`)
-- **Frontend:** Angular 22 + TypeScript, signals, standalone components (`frontend/`)
+- **Server:** Python 3.12+, FastAPI, WebSockets, SQLAlchemy 2 + Alembic, Postgres (SQLite for local dev) — `backend/`
+- **Client:** Angular 22 + TypeScript (shell, lobby, HUD) and **Babylon.js** (3D game) — `frontend/`
 
-## Running it locally
+## Quick start
 
-You need Python 3.11+ and Node.js 20+.
+You need Python 3.12+ and Node.js 22+. Two terminals:
 
-**1. Backend** (http://localhost:8000)
+**Server** (http://localhost:8000)
 
-```bash
+```powershell
 cd backend
 python -m venv .venv
-# Windows: .venv\Scripts\activate    macOS/Linux: source .venv/bin/activate
-pip install -r requirements-dev.txt
-uvicorn ludobrawl.api:app --reload --port 8000
+.venv\Scripts\python.exe -m pip install -r requirements-dev.txt
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload --port 8000
 ```
 
-**2. Frontend** (http://localhost:4200, proxies `/api` and the WebSocket to :8000)
+**Client** (http://localhost:4200, proxies `/api` + WebSocket to :8000)
 
-```bash
+```powershell
 cd frontend
 npm install
 npm start
 ```
 
-Open http://localhost:4200 in two browser windows (or one normal + one private window) to play against yourself, or add bots from the lobby.
+**Everything in one container with Postgres:** `docker compose up --build` → http://localhost:8000
 
-### Single-server mode
+**Single-server mode:** `npm run build` in `frontend/`; the server then serves the built client at http://localhost:8000.
 
-`npm run build` in `frontend/` puts the app in `frontend/dist/frontend/browser`. If that folder exists, the backend serves it too, so `uvicorn ludobrawl.api:app --port 8000` alone gives you the whole game at http://localhost:8000. Set `LUDO_STATIC_DIR` to serve a build from somewhere else.
+## Gameplay
 
-### Configuration
-
-| Env var | Default | Meaning |
-| --- | --- | --- |
-| `LUDO_BOT_DELAY` | `0.9` | Seconds a bot waits before each action |
-| `LUDO_TURN_TIMEOUT` | `30` | Seconds before an idle human's turn is auto-played |
-| `LUDO_ROOM_TTL` | `7200` | Seconds of inactivity before a room is deleted |
-| `LUDO_CORS_ORIGINS` | `http://localhost:4200` | Comma-separated origins allowed to call the API |
-| `LUDO_STATIC_DIR` | `frontend/dist/frontend/browser` | Built frontend to serve |
-
-Tip: `LUDO_BOT_DELAY=0.05 LUDO_TURN_TIMEOUT=0.3` makes a game play itself to the end in about a minute, which is handy for testing the end-of-game screens.
-
-### Tests
-
-```bash
-cd backend
-pytest
-```
-
-## How the game works
-
-| Rule | Detail |
-| --- | --- |
-| Leaving base | Roll a **6** to bring a piece onto your start square. |
-| Movement | Clockwise around the 52-square track, then up your own 5-square home column. You need the exact roll to reach the centre. |
-| Knockouts | Landing on an opponent sends their piece back to base. Start squares and ★ squares are **safe**. |
-| Extra rolls | Rolling a 6, knocking someone out, or getting a piece home gives another roll. **Three 6s in a row** forfeits the turn. |
-| Winning | First to get all four pieces home wins. Play continues for the remaining places until one player is left. |
-| No choice? | If every legal move is equivalent (e.g. only one piece can move), it is played automatically. |
-| AFK | If a human doesn't act within 30 s, the bot plays that action for them. |
-| Leaving mid-game | A bot takes over the seat so the game can continue. If the host leaves, the next human becomes host. |
+| | |
+|---|---|
+| Heroes | **Samurai** – *Katana Slash* (3 mana): hit the 2 tiles ahead, knock enemies back 4. *Bushido*: +1 mana per knockout. **Grand Wizard** – *Zap* (3): knock back an enemy within 6 tiles by 3; *Blink* (4): teleport 1–3 tiles. Knight, Dragon Rider, Ranger and Druid are defined and coming next. |
+| Skins | Cosmetic only (heroes carry the abilities). Each hero has a default and a rarer skin. |
+| Mana | Max 5. +1 per turn, +1 on rolling a 1, +2 when knocked out, +1 when knocked back, +2 for stopping on a shrine. One spell per turn, before or after rolling. |
+| Base rules | Roll a 6 to leave camp. Land on an enemy to send it back to camp. Start, ✦ and home-path tiles are safe from attacks and spells. 6 / knockout / reaching the temple = extra roll; three 6s lose the turn. Exact roll to finish. |
+| Maps | **Emerald Wilds** (64-tile winding trail through jungle, forest and ruins, rivers with bridges, shrines) and **Classic Arena**. |
+| Flow | Idle humans are auto-played after 30 s; leaving mid-game hands your seat to a bot. |
 
 ## Architecture
 
 ```
-backend/ludobrawl/
-  game.py    Pure rules engine (no I/O, dice values are passed in) — easy to test
-  bots.py    Greedy move picker used by bots and for AFK players
-  rooms.py   Rooms, players, lobby actions, turn timer, idle-room cleanup
-  api.py     FastAPI: REST endpoints for actions, WebSocket for live updates
+backend/app/
+  game/board.py        Board graph loaded from map JSON (routes, loop, node kinds)
+  game/maps/*.json     Maps — generated by scripts/build_maps.py
+  game/rules.py        Authoritative rules engine; pure, seeded, emits domain events
+  game/events.py       Event models (moved, captured, abilityCast, knockedBack, ...)
+  game/heroes.py       Hero / ability / skin catalogue (data)
+  game/bots.py         Bot AI (moves + spell casting)
+  rooms/service.py     Rooms, seats, hero/skin/map choice, turn timer, bots — behind a RoomStore (Redis-ready)
+  realtime/            WebSocket hub + wire protocol (pydantic → JSON Schema → TypeScript)
+  api/                 REST: guests, catalog (maps, heroes), rooms
+  db/                  Guests + match history (SQLAlchemy), migrations/ (Alembic)
 
 frontend/src/app/
-  core/      API client, RoomStore (session + WebSocket + actions), toasts, models
-  pages/     Home (create / join), Lobby, Room (switches lobby ↔ game)
-  game/      Board (SVG + step-by-step move animation), Dice, GameView
+  engine/              Babylon.js game engine — no Angular inside
+    game-scene.ts        Entry point: Angular feeds it server messages, it renders & reports clicks
+    world/               Terrain, rivers, rock-tile trail, shrines, temple, camps, forests, birds, clouds
+    actors/              Animated heroes (glTF, blended clips, skins, team colours), 3D dice
+    camera/director.ts   Overview / follow / cinematic camera with free-look hand-back
+    presentation/        EventPlayer: turns server events into choreographed beats
+    vfx/ post/           Particles, slashes, lightning, impacts, combat text; bloom, AO, DOF, tone mapping
+    assets/catalog.ts    Which model/props/tint/animations each skin uses (swap art here)
+  core/                API client, guest identity, room store (WebSocket), generated protocol.ts
+  pages/ game/         Home, lobby (heroes, skins, map), full-screen game + HUD
+  audio/               Procedural music + SFX (Web Audio)
 ```
 
-**Flow:** clients send actions over REST with an `X-Player-Token` header (issued when you create/join a room and kept in `localStorage`, so refreshing the page puts you back in your seat). Every state change is pushed to everyone in the room over `GET /api/rooms/{code}/ws` as a full snapshot. A background task ticks every 200 ms to let bots act and auto-play idle humans.
+**Protocol:** lobby actions over REST; in-game commands (`roll`, `move`, `cast`) over the room WebSocket. The server answers with `events` (ordered, with a sequence number) plus the resulting room state; clients animate the events, then adopt the state. `hello`/`snapshot` messages resync after (re)connecting. After changing `backend/app/realtime/protocol.py` or events, run `python scripts/gen_protocol.py` (backend) then `npm run gen:protocol` (frontend). CI fails if they're out of date.
 
-### API
+**Content is data:** new maps are a function in `scripts/build_maps.py`; new heroes/abilities go in `game/heroes.py` (+ an effect handler in `rules.py`), and their look in `engine/assets/catalog.ts`.
 
-| Method | Path | Notes |
-| --- | --- | --- |
-| `POST` | `/api/rooms` | `{name}` → `{room, playerId, token}` |
-| `POST` | `/api/rooms/{code}/join` | `{name}` → `{room, playerId, token}` |
-| `GET` | `/api/rooms/{code}` | Public room snapshot |
-| `POST` | `/api/rooms/{code}/bots` | Host, lobby only |
-| `DELETE` | `/api/rooms/{code}/players/{id}` | Host kicks a player/bot, lobby only |
-| `POST` | `/api/rooms/{code}/color` | `{color}` — pick a free seat |
-| `POST` | `/api/rooms/{code}/start` | Host, needs ≥ 2 players |
-| `POST` | `/api/rooms/{code}/roll` | Your turn |
-| `POST` | `/api/rooms/{code}/move` | `{piece: 0-3}` |
-| `POST` | `/api/rooms/{code}/rematch` | Host, after a game ends |
-| `POST` | `/api/rooms/{code}/leave` | |
-| `WS` | `/api/rooms/{code}/ws?token=…` | Live snapshots |
+### Configuration (env, prefix `LUDO_`)
 
-Errors come back as `{"error": "human readable message"}` with a 4xx status.
+| Variable | Default | |
+|---|---|---|
+| `LUDO_DATABASE_URL` | `sqlite+aiosqlite:///./ludobrawl.db` | e.g. `postgresql+asyncpg://ludo:ludo@localhost:5432/ludo` |
+| `LUDO_DB_AUTO_CREATE` | `true` | Create tables on start (dev). Use `alembic upgrade head` in production. |
+| `LUDO_BOT_DELAY` / `LUDO_TURN_TIMEOUT` | `1.1` / `30` | Seconds. `0.05` / `0.3` lets a game play itself for testing. |
+| `LUDO_CORS_ORIGINS` | `["http://localhost:4200"]` | |
+| `LUDO_STATIC_DIR` | `frontend/dist/frontend/browser` | Built client to serve. |
 
-### Limitations
+Client dev flags (browser console): `localStorage['ludo-brawl:debug']='1'` exposes `ludoDebug` (the GameScene; `ludoDebug.scene.debugLayer` for the inspector). Graphics quality is the High/Fast toggle in-game.
 
-Rooms live in memory, so restarting the server ends all games, and it runs as a single process. Moving the room state to Redis would be the next step for multi-instance hosting.
+### Tests
+
+```powershell
+cd backend
+.venv\Scripts\python.exe -m pytest
+.venv\Scripts\python.exe -m ruff check .
+```
+
+## Art
+
+Placeholder art is CC0 from [KayKit](https://kaylousberg.com) (Adventurers + Medieval Hexagon packs) — see `frontend/public/assets/CREDITS.md`. Everything is referenced from `engine/assets/catalog.ts`, so custom heroes, skins and environments drop in without engine changes.
+
+## Roadmap
+
+Accounts (upgrade guests in place) → leaderboards (from match history) → currency & cosmetic shop → more heroes (Knight, Dragon Rider, Ranger, Druid are stubbed) → more maps → mobile quality preset.

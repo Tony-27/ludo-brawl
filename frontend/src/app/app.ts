@@ -1,5 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { RouterOutlet } from '@angular/router';
+import { SoundService } from './audio/sound.service';
 import { ToastService } from './core/toast.service';
 
 @Component({
@@ -10,4 +11,5 @@ import { ToastService } from './core/toast.service';
 })
 export class App {
   protected toast = inject(ToastService);
+  protected sound = inject(SoundService);
 }
