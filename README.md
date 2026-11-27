@@ -3,7 +3,15 @@
 Online multiplayer Ludo for 2–4 players. Open the site, **create a room** or **join one with a code**, fill empty seats with friends or bots, and play.
 
 - **Backend:** Python 3.11+, FastAPI, WebSockets (`backend/`)
-- **Frontend:** Angular 22 + TypeScript, signals, standalone components (`frontend/`)
+- **Frontend:** Angular 22 + TypeScript, signals, standalone components, Three.js 3D board (`frontend/`)
+
+### Features
+
+- 🏰 **3D tabletop map**: stone tiles, castles for each team, torch-lit central altar, forest scenery. Drag to rotate, scroll to zoom; the camera starts behind your own castle.
+- 🧙 **Characters with personality**: Red **Warriors**, Green **Rangers**, Yellow **Wizards** and Blue **Knights**, each with their own gear and faces that blink and react (happy, angry, scared, dizzy).
+- ⚔️ **Combat**: land on someone and your character winds up, leaps in and smashes them, with sparks, screen shake and a "BONK!", sending the victim flying dizzy back to their castle.
+- 🎲 **3D dice** that tumble in the current player's colour.
+- 🎵 **Original soundtrack and sound effects**, all generated live in the browser (Web Audio). Toggle music/sounds with the buttons in the bottom-right corner.
 
 ## Running it locally
 
@@ -76,8 +84,10 @@ backend/ludobrawl/
 
 frontend/src/app/
   core/      API client, RoomStore (session + WebSocket + actions), toasts, models
-  pages/     Home (create / join), Lobby, Room (switches lobby ↔ game)
-  game/      Board (SVG + step-by-step move animation), Dice, GameView
+  pages/     Home (create / join), Lobby, Room (switches lobby ↔ game, lazy-loaded)
+  game/      Board (hosts the 3D scene), Dice (3D), GameView
+  game/three/  Three.js scene: map, pawns, animation timeline, combat FX
+  audio/     Procedural music + sound effects (Web Audio API)
 ```
 
 **Flow:** clients send actions over REST with an `X-Player-Token` header (issued when you create/join a room and kept in `localStorage`, so refreshing the page puts you back in your seat). Every state change is pushed to everyone in the room over `GET /api/rooms/{code}/ws` as a full snapshot. A background task ticks every 200 ms to let bots act and auto-play idle humans.

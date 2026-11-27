@@ -45,6 +45,7 @@
             <span class="chip"></span>
             <span class="name">
               {{ s.player?.name ?? label[s.color] }}
+              <small class="cls">{{ classes[s.color] }}</small>
               @if (s.player?.isBot) {
                 <small>🤖</small>
               }

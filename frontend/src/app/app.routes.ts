@@ -1,9 +1,9 @@
 import { Routes } from '@angular/router';
 import { HomePage } from './pages/home';
-import { RoomPage } from './pages/room';
 
 export const routes: Routes = [
   { path: '', component: HomePage, title: 'Ludo Brawl' },
-  { path: 'room/:code', component: RoomPage, title: 'Ludo Brawl – Room' },
+  // The room (and the 3D engine it pulls in) loads on demand, so the start page stays light.
+  { path: 'room/:code', loadComponent: () => import('./pages/room').then((m) => m.RoomPage), title: 'Ludo Brawl – Room' },
   { path: '**', redirectTo: '' },
 ];

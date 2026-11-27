@@ -27,14 +27,17 @@
 
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 340px;
+  grid-template-columns: minmax(0, 1fr) 320px;
   gap: 20px;
   align-items: start;
 }
 
 .board-wrap {
-  width: min(100%, calc(100dvh - 90px));
+  width: 100%;
+  max-width: calc((100dvh - 90px) * 1.25);
   justify-self: center;
+
+  app-board { aspect-ratio: 5 / 4; }
 }
 
 .side {
@@ -113,6 +116,7 @@
     white-space: nowrap;
     small { color: var(--muted); font-weight: 400; }
     .off { color: var(--red); }
+    .cls { color: var(--c); font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
   }
   .score { display: flex; gap: 3px; }
   .pip {
@@ -191,6 +195,6 @@
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }
-  .board-wrap { width: min(100%, 70dvh); }
+  .board-wrap { max-width: none; app-board { aspect-ratio: 1; } }
   .log { max-height: 180px; }
 }

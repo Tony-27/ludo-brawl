@@ -1,9 +1,11 @@
-import { Component, ElementRef, HostListener, OnDestroy, computed, effect, inject, signal, viewChild } from '@angular/core';
+import { Component, ElementRef, HostListener, OnDestroy, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
+import { SoundService } from '../audio/sound.service';
 import { COLOR_LABEL, Color, PlayerView } from '../core/models';
 import { RoomStore } from '../core/room-store.service';
 import { Board } from './board';
 import { Dice } from './dice';
 import { FINISH } from './geometry';
+import { TEAM_CLASS } from './three/pawn';
 
 const MEDALS = ['🥇', '🥈', '🥉', '4th'];
 
@@ -15,6 +17,8 @@ const MEDALS = ['🥇', '🥈', '🥉', '4th'];
 })
 export class GameView implements OnDestroy {
   protected store = inject(RoomStore);
+  private sound = inject(SoundService);
+  protected readonly classes = TEAM_CLASS;
   protected readonly label = COLOR_LABEL;
   protected readonly medals = MEDALS;
   protected readonly pipSlots = [0, 1, 2, 3];
@@ -55,6 +59,7 @@ export class GameView implements OnDestroy {
     return g.phase === 'roll' ? `${who.name} is rolling…` : `${who.name} is choosing a move…`;
   });
 
+  private myRollTurn = computed(() => this.store.myTurn() && this.game().phase === 'roll');
   protected canRoll = computed(() => this.store.myTurn() && this.game().phase === 'roll' && !this.store.busy());
   protected canMove = computed(() => this.store.myTurn() && this.game().phase === 'move' && !this.store.busy());
 
@@ -80,9 +85,16 @@ export class GameView implements OnDestroy {
       const el = this.logEl()?.nativeElement;
       if (el) queueMicrotask(() => (el.scrollTop = el.scrollHeight));
     });
-    // Re-open the results dialog whenever a game ends.
+    // Re-open the results dialog (with a fanfare) whenever a game ends.
     effect(() => {
-      if (this.finished()) this.showResults.set(true);
+      if (this.finished()) {
+        this.showResults.set(true);
+        untracked(() => setTimeout(() => this.sound.play('gameOver'), 900));
+      }
+    });
+    // Chime when it becomes your turn.
+    effect(() => {
+      if (this.myRollTurn()) untracked(() => this.sound.play('yourTurn'));
     });
   }
 
