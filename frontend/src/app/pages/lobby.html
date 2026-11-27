@@ -1,0 +1,66 @@
+<main class="lobby">
+  <header class="top">
+    <button class="btn ghost" type="button" (click)="store.leave()">← Leave</button>
+    <span class="status" [class.online]="store.connected()">{{ store.connected() ? 'Live' : 'Reconnecting…' }}</span>
+  </header>
+
+  <section class="card invite">
+    <p class="eyebrow">Room code</p>
+    <div class="code" aria-label="Room code">
+      @for (ch of room().code.split(''); track $index) {
+        <span>{{ ch }}</span>
+      }
+    </div>
+    <button class="btn" type="button" (click)="copy()">{{ copied() ? '✓ Link copied' : '🔗 Copy invite link' }}</button>
+    <p class="hint">Friends can open the link, or choose “Join a room” and type the code.</p>
+  </section>
+
+  <section class="seats">
+    @for (seat of seats(); track seat.color) {
+      <div
+        class="seat"
+        [class]="seat.color"
+        [class.empty]="!seat.player"
+        [class.mine]="seat.player?.id === store.me()?.id"
+      >
+        <div class="token" aria-hidden="true"></div>
+        @if (seat.player; as p) {
+          <div class="who">
+            <strong>{{ p.name }}</strong>
+            <small>
+              @if (p.id === room().hostId) { 👑 Host }
+              @if (p.isBot) { 🤖 Bot }
+              @if (p.id === store.me()?.id) { · You }
+              @if (!p.connected) { · offline }
+            </small>
+          </div>
+          @if (store.isHost() && p.id !== store.me()?.id) {
+            <button class="icon-btn" type="button" (click)="store.kick(p.id)" [attr.aria-label]="'Remove ' + p.name">✕</button>
+          }
+        } @else {
+          <div class="who">
+            <strong>{{ label[seat.color] }} is free</strong>
+            <small>Waiting for a player</small>
+          </div>
+          <button class="btn small" type="button" (click)="seatClick(seat.color, null)" [disabled]="store.busy()">
+            Take seat
+          </button>
+        }
+      </div>
+    }
+  </section>
+
+  <section class="actions">
+    @if (store.isHost()) {
+      <button class="btn" type="button" (click)="store.addBot()" [disabled]="full() || store.busy()">🤖 Add bot</button>
+      <button class="btn primary big" type="button" (click)="store.start()" [disabled]="!canStart() || store.busy()">
+        Start game
+      </button>
+      @if (!canStart()) {
+        <p class="hint">You need at least 2 players. Invite a friend or add a bot.</p>
+      }
+    } @else {
+      <p class="waiting"><span class="dot"></span> Waiting for the host to start the game…</p>
+    }
+  </section>
+</main>

@@ -1,0 +1,104 @@
+<main class="game">
+  <header class="bar">
+    <button class="btn ghost" type="button" (click)="store.leave()">← Leave</button>
+    <div class="room-code">Room <strong>{{ room().code }}</strong></div>
+    <span class="status-dot" [class.online]="store.connected()" [title]="store.connected() ? 'Live' : 'Reconnecting…'"></span>
+  </header>
+
+  <div class="layout">
+    <section class="board-wrap">
+      <app-board
+        [game]="game()"
+        [players]="room().players"
+        [myColor]="myColor()"
+        [canMove]="canMove()"
+        (move)="store.move($event)"
+      />
+    </section>
+
+    <aside class="side">
+      <section class="card turn" [class]="game().current">
+        <app-dice
+          [value]="game().lastRoll"
+          [rollSeq]="game().rollSeq"
+          [color]="game().current"
+          [enabled]="canRoll()"
+          (roll)="store.roll()"
+        />
+        <div class="turn-text">
+          <p class="status">{{ status() }}</p>
+          @if (canRoll()) {
+            <p class="hint">Click the dice or press Space</p>
+          }
+          @if (timeLeft(); as t) {
+            <div class="timer" [class.low]="t <= 10">
+              <div class="fill" [style.width.%]="timePct()"></div>
+            </div>
+            <p class="hint">{{ t }}s left before auto-play</p>
+          }
+        </div>
+      </section>
+
+      <section class="card players">
+        @for (s of seats(); track s.color) {
+          <div class="player" [class]="s.color" [class.active]="s.active" [class.me]="s.player?.id === store.me()?.id">
+            <span class="chip"></span>
+            <span class="name">
+              {{ s.player?.name ?? label[s.color] }}
+              @if (s.player?.isBot) {
+                <small>🤖</small>
+              }
+              @if (s.player && !s.player.connected) {
+                <small class="off">offline</small>
+              }
+              @if (s.player?.id === store.me()?.id) {
+                <small>(you)</small>
+              }
+            </span>
+            <span class="score" [attr.aria-label]="s.home + ' of 4 pieces home'">
+              @if (s.rank !== null) {
+                {{ medals[s.rank] }}
+              } @else {
+                @for (i of pipSlots; track i) {
+                  <span class="pip" [class.done]="i < s.home"></span>
+                }
+              }
+            </span>
+          </div>
+        }
+      </section>
+
+      <section class="card log" #log aria-label="Game log">
+        @for (entry of room().log; track entry.id) {
+          <p [class]="entry.color ?? ''">{{ entry.text }}</p>
+        }
+      </section>
+    </aside>
+  </div>
+
+  @if (finished() && showResults()) {
+    <div class="overlay" role="dialog" aria-modal="true" aria-labelledby="results-title">
+      <div class="card results">
+        <h2 id="results-title">🎉 {{ podium()[0]?.player?.name ?? 'Someone' }} wins!</h2>
+        <ol>
+          @for (p of podium(); track p.color) {
+            <li [class]="p.color">
+              <span class="medal">{{ p.medal }}</span>
+              <span class="chip"></span>
+              {{ p.player?.name ?? label[p.color] }}
+            </li>
+          }
+        </ol>
+        <div class="results-actions">
+          @if (store.isHost()) {
+            <button class="btn primary big" type="button" (click)="store.rematch()">Play again</button>
+          } @else {
+            <p class="hint">Waiting for the host to start a rematch…</p>
+          }
+          <button class="btn ghost" type="button" (click)="showResults.set(false)">View board</button>
+          <button class="btn ghost" type="button" (click)="store.leave()">Leave room</button>
+        </div>
+      </div>
+    </div>
+  }
+</main>

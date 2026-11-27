@@ -1,6 +1,0 @@
-@LudoBrawl.Api_HostAddress = http://localhost:5211
-
-GET {{LudoBrawl.Api_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

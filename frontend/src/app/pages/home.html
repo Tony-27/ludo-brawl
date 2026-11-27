@@ -1,0 +1,79 @@
+<main class="home">
+  <header class="hero">
+    <div class="hero-dice" aria-hidden="true">
+      <span class="die red">⚀</span><span class="die green">⚂</span><span class="die yellow">⚄</span><span class="die blue">⚅</span>
+    </div>
+    <h1>Ludo <span>Brawl</span></h1>
+    <p class="tagline">Roll, race and knock your friends back to base. 2–4 players, online, no sign-up.</p>
+  </header>
+
+  @if (mode() === 'choose') {
+    <section class="choices">
+      <button class="choice create" type="button" (click)="pick('create')">
+        <span class="icon">✨</span>
+        <span class="title">Create a room</span>
+        <span class="sub">Get a code and invite your friends</span>
+      </button>
+      <button class="choice join" type="button" (click)="pick('join')">
+        <span class="icon">🎟️</span>
+        <span class="title">Join a room</span>
+        <span class="sub">Got a code from a friend? Jump in</span>
+      </button>
+    </section>
+  } @else {
+    <form class="card form" (ngSubmit)="submit()">
+      <button class="back" type="button" (click)="pick('choose')" aria-label="Back">← Back</button>
+      <h2>{{ mode() === 'create' ? 'Create a room' : 'Join a room' }}</h2>
+
+      <label>
+        <span>Your name</span>
+        <input
+          name="name"
+          [(ngModel)]="name"
+          maxlength="20"
+          autocomplete="nickname"
+          placeholder="e.g. Dice Queen"
+          [appAutofocus]="mode() === 'create' || !!code"
+        />
+      </label>
+
+      @if (mode() === 'join') {
+        <label>
+          <span>Room code</span>
+          <input
+            class="code-input"
+            name="code"
+            [ngModel]="code"
+            (ngModelChange)="onCodeInput($event)"
+            maxlength="5"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="ABCDE"
+            [appAutofocus]="!code"
+          />
+        </label>
+      }
+
+      <button
+        class="btn primary big"
+        type="submit"
+        [disabled]="!nameOk || (mode() === 'join' && !codeOk) || store.busy()"
+      >
+        {{ store.busy() ? 'Hang on…' : mode() === 'create' ? 'Create room' : 'Join room' }}
+      </button>
+    </form>
+  }
+
+  <footer class="rules">
+    <details>
+      <summary>How to play</summary>
+      <ul>
+        <li>Roll a <b>6</b> to bring a piece out of your base.</li>
+        <li>Move clockwise around the board and up your coloured lane to the centre.</li>
+        <li>Land on an opponent to <b>knock them back</b> to base, except on ★ and start squares, which are safe.</li>
+        <li>A 6, a knockout, or getting a piece home gives you another roll. Three 6s in a row and you lose your turn.</li>
+        <li>You need the exact number to reach home. First to get all four pieces home wins!</li>
+      </ul>
+    </details>
+  </footer>
+</main>
