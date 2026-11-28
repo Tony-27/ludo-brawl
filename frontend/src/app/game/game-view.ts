@@ -41,12 +41,13 @@ export class GameView implements OnDestroy {
   protected readonly teamCss = TEAM_CSS;
   protected readonly label = COLOR_LABEL;
   protected readonly medals = MEDALS;
-  protected readonly orbs = [0, 1, 2, 3, 4];
+  protected readonly dice = [1, 2, 3, 4, 5, 6];
 
   private canvasRef = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
   private scene: GameScene | null = null;
   private subs: Subscription[] = [];
   private feedSeq = 0;
+  private focusIndex = 0;
 
   protected loading = signal(0);
   protected ready = signal(false);
@@ -55,6 +56,8 @@ export class GameView implements OnDestroy {
   protected targeting = signal<AbilityInfo | null>(null);
   protected feed = signal<FeedLine[]>([]);
   protected showResults = signal(false);
+  protected showHelp = signal(false);
+  protected forcedDice = signal<number | null>(null);
 
   protected room = computed(() => this.store.room()!);
   protected match = computed(() => this.room().match!);
@@ -63,6 +66,7 @@ export class GameView implements OnDestroy {
   protected myTeam = computed(() => (this.myColor() ? this.match().teams[this.myColor()!] : null));
   protected myHero = computed(() => this.store.hero(this.store.me()?.hero));
   protected currentPlayer = computed(() => this.playerOf(this.match().current));
+  protected orbs = computed(() => Array.from({ length: this.myTeam()?.maxMana ?? 6 }, (_, i) => i));
 
   protected plates = computed(() =>
     this.match().turnOrder.map((color) => {
@@ -73,7 +77,7 @@ export class GameView implements OnDestroy {
         player: this.playerOf(color),
         hero: this.store.hero(team.hero)?.name ?? team.hero,
         mana: team.mana,
-        maxMana: team.maxMana,
+        orbs: Array.from({ length: team.maxMana }, (_, i) => i),
         home: team.pieces.filter((p) => p >= team.finish).length,
         pieces: team.pieces.length,
         rank: rank === -1 ? null : rank,
@@ -81,6 +85,27 @@ export class GameView implements OnDestroy {
       };
     }),
   );
+
+  /** One card per hero the player owns: where it is and whether it can act. */
+  protected cards = computed(() => {
+    const team = this.myTeam();
+    const me = this.myColor();
+    if (!team || !me) return [];
+    const i = this.interaction();
+    return team.pieces.map((p, idx) => {
+      const actionable =
+        (i.mode === 'move' && i.options.some((o) => o.piece === idx)) ||
+        (i.mode === 'target' && i.targets.some((t) => t.color === me && t.piece === idx));
+      return {
+        piece: idx,
+        state: p < 0 ? 'camp' : p >= team.finish ? 'home' : 'trail',
+        progress: Math.max(0, Math.min(1, p / team.finish)),
+        label: p < 0 ? 'In camp' : p >= team.finish ? 'Home!' : `${Math.round((p / team.finish) * 100)}% of the way`,
+        statuses: team.statuses[idx] ?? [],
+        actionable,
+      };
+    });
+  });
 
   protected canAct = computed(() => this.store.myTurn() && !this.store.busy() && !this.sceneBusy() && !this.finished());
   protected canRoll = computed(() => this.canAct() && this.match().phase === 'roll' && !this.targeting());
@@ -90,7 +115,10 @@ export class GameView implements OnDestroy {
     const m = this.match();
     if (this.finished()) return 'Victory belongs to ' + (this.playerOf(m.ranking[0])?.name ?? '…');
     if (this.targeting()) return `${this.targeting()!.name}: pick a target · Esc to cancel`;
-    if (this.store.myTurn()) return m.phase === 'roll' ? 'Your turn: cast a spell or roll the dice' : 'Choose a hero to move';
+    if (this.store.myTurn()) {
+      if (m.phase === 'roll') return 'Your turn: cast a spell or roll the dice';
+      return m.moveOptions.some((o) => o.lane !== null) ? 'Choose a hero to move (forks: pick a lane)' : 'Choose a hero to move';
+    }
     const who = this.currentPlayer();
     return who ? `${who.name} is ${m.phase === 'roll' ? 'rolling' : 'choosing a move'}…` : '';
   });
@@ -109,8 +137,6 @@ export class GameView implements OnDestroy {
 
   constructor() {
     afterNextRender(() => void this.boot());
-
-    // Keep the 3D scene's clickable pieces in sync with the HUD state.
     effect(() => {
       const interaction = this.interaction();
       untracked(() => this.scene?.setInteraction(interaction));
@@ -121,38 +147,28 @@ export class GameView implements OnDestroy {
     effect(() => {
       if (this.finished() && !this.sceneBusy()) untracked(() => setTimeout(() => this.showResults.set(true), 1200));
     });
-  }
-
-  /** Pieces a spell could be aimed at right now (the server still validates range etc.). */
-  private targetsFor(ability: AbilityInfo): { color: Color; piece: number }[] {
-    const m = this.match();
-    const me = this.myColor();
-    const scene = this.scene;
-    if (!me || !scene || !this.ready()) return [];
-    const team = m.teams[me];
-    if (ability.targeting === 'enemyPiece') {
-        const targets: { color: Color; piece: number }[] = [];
-        for (const [color, t] of Object.entries(m.teams) as [Color, (typeof m.teams)[string]][]) {
-          if (color === me) continue;
-          t.pieces.forEach((p, i) => {
-            const node = scene.layout.nodeAt(color, p);
-            if (node && (node.kind === 'normal' || node.kind === 'shrine')) targets.push({ color, piece: i });
-          });
-        }
-        return targets;
-      }
-      return team.pieces
-        .map((p, i) => ({ p, i, node: scene.layout.nodeAt(me, p) }))
-        .filter(({ p, node }) => p >= 0 && p < team.finish && node && (ability.targeting === 'ownPieceSteps' || node.kind !== 'home'))
-        .map(({ i }) => ({ color: me, piece: i }));
+    // A spell that's no longer castable (turn ended, mana spent) can't stay armed.
+    effect(() => {
+      const a = this.targeting();
+      if (a && !this.match().castTargets[a.id]) untracked(() => this.targeting.set(null));
+    });
   }
 
   private interaction = computed<Interaction>(() => {
     const m = this.match();
+    const me = this.myColor();
     const ability = this.targeting();
-    if (!this.myColor() || !this.canAct()) return { mode: 'none' };
-    if (ability) return { mode: 'target', targets: this.targetsFor(ability) };
-    if (m.phase === 'move') return { mode: 'move', pieces: m.legalPieces };
+    if (!me || !this.canAct()) return { mode: 'none' };
+    if (ability) {
+      const targets = m.castTargets[ability.id] ?? [];
+      if (ability.targeting === 'tile') return { mode: 'tile', tiles: targets.map((t) => String(t['node'])) };
+      if (ability.targeting === 'enemyPiece') {
+        return { mode: 'target', targets: targets.map((t) => ({ color: t['color'] as Color, piece: Number(t['piece']) })) };
+      }
+      const pieces = [...new Set(targets.map((t) => Number(t['piece'])))];
+      return { mode: 'target', targets: pieces.map((piece) => ({ color: me, piece })) };
+    }
+    if (m.phase === 'move') return { mode: 'move', options: m.moveOptions };
     return { mode: 'none' };
   });
 
@@ -174,6 +190,7 @@ export class GameView implements OnDestroy {
     }
     const scene = this.scene;
     scene.onPick = (t) => this.onPick(t);
+    scene.onPickTile = (id) => this.onPickTile(id);
     scene.onCue = (cue) => this.sound.play(cue);
     scene.snapshot(this.store.room()!);
     scene.setInteraction(this.interaction());
@@ -187,36 +204,38 @@ export class GameView implements OnDestroy {
     this.ready.set(true);
   }
 
-  private onPick(t: { color: Color; piece: number }) {
+  private onPick(t: { color: Color; piece: number; lane?: number | null }) {
     const ability = this.targeting();
-    const me = this.myColor();
-    if (ability && me) {
+    if (ability) {
       this.targeting.set(null);
+      const targets = this.match().castTargets[ability.id] ?? [];
       if (ability.targeting === 'enemyPiece') {
         this.store.cast(ability.id, { color: t.color, piece: t.piece });
       } else if (ability.targeting === 'ownPieceSteps') {
-        const team = this.match().teams[me];
-        const steps = Math.max(1, Math.min(Number(ability.params['maxSteps'] ?? 3), team.finish - team.pieces[t.piece]));
-        this.store.cast(ability.id, { piece: t.piece, steps });
+        // Furthest valid blink for that piece.
+        const best = targets.filter((x) => x['piece'] === t.piece).sort((a, b) => Number(b['steps']) - Number(a['steps']))[0];
+        if (best) this.store.cast(ability.id, best);
       } else {
         this.store.cast(ability.id, { piece: t.piece });
       }
       return;
     }
-    if (this.choosingMove() && t.color === me) this.store.move(t.piece);
+    if (this.choosingMove() && t.color === this.myColor()) this.store.move(t.piece, t.lane ?? null);
   }
 
-  protected canCast(a: AbilityInfo): boolean {
+  private onPickTile(nodeId: string) {
+    const ability = this.targeting();
+    if (!ability) return;
+    this.targeting.set(null);
+    this.store.cast(ability.id, { node: nodeId });
+  }
+
+  protected abilityState(a: AbilityInfo): 'ready' | 'used' | 'noTarget' | 'noMana' | 'wait' {
     const team = this.myTeam();
-    const phase = this.match().phase;
-    return (
-      this.canAct() &&
-      !!team &&
-      !this.match().castUsed &&
-      team.mana >= a.cost &&
-      (phase === 'roll' || phase === 'move') &&
-      this.targetsFor(a).length > 0
-    );
+    if (a.slot === 'ultimate' && team?.ultUsed) return 'used';
+    if (!this.canAct() || this.match().castUsed || !(this.match().phase === 'roll' || this.match().phase === 'move')) return 'wait';
+    if ((team?.mana ?? 0) < a.cost) return 'noMana';
+    return this.match().castTargets[a.id] ? 'ready' : 'noTarget';
   }
 
   protected toggleAbility(a: AbilityInfo) {
@@ -224,13 +243,25 @@ export class GameView implements OnDestroy {
       this.targeting.set(null);
       return;
     }
-    if (!this.canCast(a)) return;
-    this.targeting.set(a);
+    if (this.abilityState(a) !== 'ready') return;
     this.sound.play('click');
+    if (a.targeting === 'none') {
+      this.store.cast(a.id, {});
+      return;
+    }
+    this.targeting.set(a);
   }
 
   protected roll() {
     if (this.canRoll()) this.store.roll();
+  }
+
+  protected cardClick(piece: number) {
+    const me = this.myColor();
+    if (!me || !this.scene) return;
+    const card = this.cards().find((c) => c.piece === piece);
+    if (card?.actionable) this.scene.pickPiece(me, piece);
+    else this.scene.focusPiece(me, piece);
   }
 
   protected setQuality(q: Quality) {
@@ -239,14 +270,56 @@ export class GameView implements OnDestroy {
     location.reload();
   }
 
+  protected forceDice(v: number) {
+    this.forcedDice.set(v);
+    this.store.practice({ dice: v });
+  }
+
+  protected maxMana() {
+    this.store.practice({ mana: this.myTeam()?.maxMana ?? 6 });
+  }
+
   @HostListener('document:keydown', ['$event'])
   protected onKey(e: KeyboardEvent) {
     const el = e.target as HTMLElement | null;
     if (el?.closest?.('input, textarea')) return;
-    if (e.key === 'Escape') this.targeting.set(null);
-    if ((e.key === ' ' || e.key === 'Enter') && this.canRoll()) {
-      e.preventDefault();
-      this.roll();
+    const me = this.myColor();
+    switch (e.key) {
+      case 'Escape':
+        this.targeting.set(null);
+        this.showHelp.set(false);
+        return;
+      case ' ':
+      case 'Enter':
+        if (this.canRoll()) {
+          e.preventDefault();
+          this.roll();
+        }
+        return;
+      case 'Tab': {
+        e.preventDefault();
+        const team = this.myTeam();
+        if (!me || !team) return;
+        const onBoard = team.pieces.map((p, i) => ({ p, i })).filter(({ p }) => p >= 0 && p < team.finish);
+        if (!onBoard.length) {
+          this.scene?.focusCamp(me);
+          return;
+        }
+        this.focusIndex = (this.focusIndex + 1) % onBoard.length;
+        this.scene?.focusPiece(me, onBoard[this.focusIndex].i);
+        return;
+      }
+      case 'h':
+      case 'H':
+        if (me) this.scene?.focusCamp(me);
+        return;
+      case 'q':
+      case 'Q':
+        this.scene?.overview();
+        return;
+      case '?':
+        this.showHelp.update((v) => !v);
+        return;
     }
     const n = Number(e.key);
     const abilities = this.myHero()?.abilities ?? [];
@@ -274,11 +347,20 @@ export class GameView implements OnDestroy {
           break;
         case 'abilityCast': {
           const ability = this.store.heroes().flatMap((h) => h.abilities).find((a) => a.id === e.ability);
-          push(`✨ ${this.name(e.color)} cast ${ability?.name ?? e.ability}`, e.color);
+          push(`${ability?.slot === 'ultimate' ? '🌟' : '✨'} ${this.name(e.color)} cast ${ability?.name ?? e.ability}`, e.color);
           break;
         }
         case 'knockedBack':
           push(`${this.name(e.color)} was knocked back ${e.from - e.to}`, e.color);
+          break;
+        case 'fell':
+          push(`🕳 ${this.name(e.color)} fell into a pit!`, e.color);
+          break;
+        case 'portaled':
+          push(`🌀 ${this.name(e.color)} took a portal`, e.color);
+          break;
+        case 'tileChanged':
+          if (e.effect === 'broken') push('🌉 A bridge collapsed!', null);
           break;
         case 'blocked':
           push(`🛡 ${this.name(e.color)} blocked it!`, e.color);

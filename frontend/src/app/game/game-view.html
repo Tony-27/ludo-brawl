@@ -12,7 +12,11 @@
   <!-- Top bar -->
   <header class="topbar">
     <button class="glass btn-ghost" type="button" (click)="store.leave()">← Leave</button>
+    @if (room().practice) {
+      <span class="glass badge">PRACTICE</span>
+    }
     <div class="glass room">Room <strong>{{ room().code }}</strong></div>
+    <button class="glass btn-ghost" type="button" (click)="showHelp.set(!showHelp())" title="Controls (?)">?</button>
     <div class="glass quality">
       <button type="button" [class.on]="quality() === 'high'" (click)="setQuality('high')">High</button>
       <button type="button" [class.on]="quality() === 'medium'" (click)="setQuality('medium')">Fast</button>
@@ -35,7 +39,7 @@
         <div class="plate-bottom">
           <span class="hero">{{ p.hero }}@if (p.player?.isBot) { · 🤖 }@if (p.player && !p.player.connected) { · offline }</span>
           <span class="mana" [attr.aria-label]="p.mana + ' mana'">
-            @for (o of orbs; track o) {
+            @for (o of p.orbs; track o) {
               <i [class.full]="o < p.mana"></i>
             }
           </span>
@@ -44,12 +48,51 @@
     }
   </aside>
 
+  <!-- My heroes -->
+  @if (cards().length) {
+    <aside class="cards">
+      @for (c of cards(); track c.piece) {
+        <button
+          type="button"
+          class="glass card-hero"
+          [class.actionable]="c.actionable"
+          [class]="c.state"
+          [style.--c]="myColor() ? teamCss[myColor()!] : '#fff'"
+          (click)="cardClick(c.piece)"
+          [title]="c.actionable ? 'Select this hero' : 'Look at this hero'"
+        >
+          <span class="num">{{ c.piece + 1 }}</span>
+          <span class="where">{{ c.label }}</span>
+          <span class="track"><span class="fill" [style.width.%]="c.progress * 100"></span></span>
+          <span class="icons">
+            @if (c.statuses.includes('shield')) { <span title="Shielded">🛡</span> }
+            @if (c.statuses.includes('rooted')) { <span title="Rooted">🌿</span> }
+          </span>
+        </button>
+      }
+    </aside>
+  }
+
   <!-- Battle feed -->
   <aside class="feed">
     @for (line of feed(); track line.id) {
       <p [style.--c]="line.color ? teamCss[line.color] : '#fff'">{{ line.text }}</p>
     }
   </aside>
+
+  <!-- Practice tools -->
+  @if (room().practice && !finished()) {
+    <aside class="glass practice">
+      <strong>Practice tools</strong>
+      <span class="small">Next roll</span>
+      <div class="dice-row">
+        @for (d of dice; track d) {
+          <button type="button" [class.on]="forcedDice() === d" (click)="forceDice(d)">{{ d }}</button>
+        }
+      </div>
+      <button type="button" class="wide" (click)="maxMana()">Fill mana + reset ultimate</button>
+    </aside>
+  }
 
   <!-- Action bar -->
   <footer class="actionbar">
@@ -64,14 +107,17 @@
         <button
           type="button"
           class="spell"
+          [class]="[a.slot, abilityState(a)]"
           [class.armed]="targeting()?.id === a.id"
-          [disabled]="!canCast(a) && targeting()?.id !== a.id"
+          [disabled]="abilityState(a) !== 'ready' && targeting()?.id !== a.id"
           (click)="toggleAbility(a)"
           [title]="a.description"
         >
           <span class="key">{{ i + 1 }}</span>
+          @if (a.slot === 'ultimate') { <span class="ult">ULT</span> }
           <span class="sname">{{ a.name }}</span>
-          <span class="cost">{{ a.cost }}◆</span>
+          <span class="cost">{{ abilityState(a) === 'used' ? 'USED' : a.cost + '◆' }}</span>
+          <span class="tip">{{ a.description }}</span>
         </button>
       }
       <button type="button" class="roll" [class.ready]="canRoll()" [disabled]="!canRoll()" (click)="roll()">
@@ -81,13 +127,23 @@
     </div>
     @if (myTeam(); as t) {
       <div class="my-mana">
-        @for (o of orbs; track o) {
+        @for (o of orbs(); track o) {
           <i [class.full]="o < t.mana"></i>
         }
         <span>{{ t.mana }}/{{ t.maxMana }} mana</span>
       </div>
     }
   </footer>
+
+  @if (showHelp()) {
+    <div class="glass help" (click)="showHelp.set(false)">
+      <h3>Controls</h3>
+      <p><kbd>Space</kbd> roll · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> spells · <kbd>Esc</kbd> cancel</p>
+      <p><kbd>Tab</kbd> next hero · <kbd>H</kbd> your camp · <kbd>Q</kbd> whole map</p>
+      <p>Drag to orbit, scroll to zoom. Click a hero card to select or find that hero.</p>
+      <p>At a fork, pick your hero, then click the lane you want.</p>
+    </div>
+  }
 
   @if (showResults() && finished()) {
     <div class="overlay" role="dialog" aria-modal="true">

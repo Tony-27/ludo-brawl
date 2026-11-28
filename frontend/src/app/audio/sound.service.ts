@@ -360,6 +360,38 @@ export class SoundService {
         this.tone(t, 'triangle', 1500, 1400, 0.4, 0.12, true);
         this.tone(t, 'triangle', 2250, 2100, 0.3, 0.06, true);
         break;
+      case 'fall':
+        this.tone(t, 'sine', 900, 120, 0.7, 0.12, true);
+        this.tone(t + 0.65, 'sine', 90, 40, 0.3, 0.4);
+        break;
+      case 'slide':
+        this.noiseHit(t, 0.18, 0.35, 'bandpass', 1200, this.sfxBus);
+        this.tone(t, 'triangle', 300, 700, 0.35, 0.05);
+        break;
+      case 'portal':
+        this.tone(t, 'sine', 200, 1400, 0.45, 0.1, true);
+        this.tone(t + 0.05, 'triangle', 600, 2400, 0.4, 0.05, true);
+        break;
+      case 'crumble':
+        for (let i = 0; i < 5; i++) this.noiseHit(t + i * 0.07, 0.3, 0.12, 'lowpass', 500 + i * 120, this.sfxBus);
+        this.tone(t, 'sine', 70, 35, 0.6, 0.4);
+        break;
+      case 'fire':
+        for (let i = 0; i < 8; i++) this.noiseHit(t + i * 0.05, 0.12, 0.08, 'bandpass', 900 + Math.random() * 900, this.sfxBus);
+        break;
+      case 'meteor':
+        this.tone(t, 'sawtooth', 1200, 80, 0.6, 0.08);
+        this.noiseHit(t + 0.5, 0.9, 0.5, 'lowpass', 900, this.sfxBus);
+        this.tone(t + 0.5, 'sine', 120, 30, 0.8, 0.8);
+        break;
+      case 'trap':
+        this.tone(t, 'square', 1800, 1700, 0.05, 0.06);
+        this.tone(t + 0.06, 'square', 1200, 1100, 0.05, 0.05);
+        break;
+      case 'roots':
+        this.noiseHit(t, 0.15, 0.3, 'bandpass', 400, this.sfxBus);
+        this.tone(t, 'triangle', 220, 160, 0.4, 0.07, true);
+        break;
       case 'mana':
         this.notes(t, [86, 90, 93], 0.06, 'sine', 0.08, 0.3);
         break;

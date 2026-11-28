@@ -4,8 +4,9 @@ import type { Color } from './protocol';
 export interface AbilityInfo {
   id: string;
   name: string;
+  slot: 'basic' | 'utility' | 'ultimate';
   cost: number;
-  targeting: 'ownPiece' | 'ownPieceSteps' | 'enemyPiece';
+  targeting: 'ownPiece' | 'ownPieceSteps' | 'enemyPiece' | 'tile' | 'none';
   description: string;
   params: Record<string, number | boolean>;
 }
@@ -20,6 +21,7 @@ export interface HeroInfo {
   id: string;
   name: string;
   title: string;
+  role: string;
   selectable: boolean;
   passive: string | null;
   skins: SkinInfo[];
@@ -34,6 +36,8 @@ export interface MapSummary {
   theme: string;
   teams: Color[];
   tiles: number;
+  piecesPerTeam: number;
+  features: string[];
 }
 
 export const COLOR_LABEL: Record<Color, string> = { red: 'Red', green: 'Green', yellow: 'Yellow', blue: 'Blue' };

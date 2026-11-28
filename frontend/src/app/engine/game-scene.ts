@@ -17,8 +17,15 @@ export type Quality = 'high' | 'medium';
 /** What the local player can click right now. */
 export type Interaction =
   | { mode: 'none' }
-  | { mode: 'move'; pieces: number[] }
-  | { mode: 'target'; targets: { color: Color; piece: number }[] };
+  | { mode: 'move'; options: { piece: number; lane: number | null; to: number }[] }
+  | { mode: 'target'; targets: { color: Color; piece: number }[] }
+  | { mode: 'tile'; tiles: string[] };
+
+export interface PieceTarget {
+  color: Color;
+  piece: number;
+  lane?: number | null;
+}
 
 export interface GameSceneOptions {
   map: MapData;
@@ -34,7 +41,8 @@ export interface GameSceneOptions {
  * It never decides game outcomes: the server is the source of truth.
  */
 export class GameScene {
-  onPick: (target: { color: Color; piece: number }) => void = () => {};
+  onPick: (target: PieceTarget) => void = () => {};
+  onPickTile: (nodeId: string) => void = () => {};
   onCue: (cue: SceneCue) => void = () => {};
 
   readonly engine: Engine;
@@ -50,6 +58,8 @@ export class GameScene {
   private player!: EventPlayer;
   private assets: AssetLoader;
   private interaction: Interaction = { mode: 'none' };
+  /** A piece picked at a fork, waiting for the player to choose its lane. */
+  private laneChoice: { piece: number; tiles: [string, string] } | null = null;
   private hovered: CharacterActor | null = null;
   private resize = () => this.engine.resize();
   private disposed = false;
@@ -101,11 +111,17 @@ export class GameScene {
     if (room.match) this.player.reconcile(room, true);
 
     this.scene.onPointerObservable.add((info) => {
-      if (info.type === PointerEventTypes.POINTERTAP) this.handlePick(info.pickInfo?.pickedMesh?.metadata?.actor);
-      if (info.type === PointerEventTypes.POINTERMOVE) this.handleHover(info.pickInfo?.pickedMesh?.metadata?.actor);
+      const meta = info.pickInfo?.pickedMesh?.metadata;
+      if (info.type === PointerEventTypes.POINTERTAP) {
+        if (meta?.highlight) this.handleTile(meta.nodeId);
+        else this.handlePick(meta?.actor);
+      }
+      if (info.type === PointerEventTypes.POINTERMOVE) this.handleHover(meta?.actor, !!meta?.highlight);
     });
-    this.scene.pointerMovePredicate = (m) => m.isPickable && !!m.metadata?.actor;
-    this.scene.pointerDownPredicate = (m) => m.isPickable && !!m.metadata?.actor;
+    const clickable = (m: { isPickable: boolean; metadata?: { actor?: unknown; highlight?: boolean } }) =>
+      m.isPickable && (!!m.metadata?.actor || !!m.metadata?.highlight);
+    this.scene.pointerMovePredicate = clickable;
+    this.scene.pointerDownPredicate = clickable;
 
     let last = performance.now();
     this.engine.runRenderLoop(() => {
@@ -146,6 +162,10 @@ export class GameScene {
     );
   }
 
+  get myColor(): Color | null {
+    return this.opts.myColor;
+  }
+
   actor(color: Color, piece: number): CharacterActor | undefined {
     return this.actors.get(`${color}${piece}`);
   }
@@ -173,34 +193,122 @@ export class GameScene {
   }
 
   setInteraction(i: Interaction) {
+    const changed = JSON.stringify(i) !== JSON.stringify(this.interaction);
     this.interaction = i;
+    this.laneChoice = null;
     this.refreshHighlights();
+    if (changed && !this.player?.busy) this.frameInteraction();
   }
 
   refreshHighlights() {
+    const busy = !!this.player?.busy;
     const allowed = this.allowed();
-    for (const a of this.actors.values()) a.setHighlighted(!this.player?.busy && allowed.has(a));
+    for (const a of this.actors.values()) a.setHighlighted(!busy && allowed.has(a));
+    const i = this.interaction;
+    const me = this.opts.myColor;
+    if (busy) this.world?.highlightTiles([], [1, 1, 1]);
+    else if (this.laneChoice) this.world?.highlightTiles(this.laneChoice.tiles, [0.55, 1, 0.75]);
+    else if (i.mode === 'tile') this.world?.highlightTiles(i.tiles, me ? this.teamRgb(me) : [1, 0.85, 0.3]);
+    else this.world?.highlightTiles([], [1, 1, 1]);
+  }
+
+  /** Point the camera at everything the player is choosing between. */
+  frameInteraction() {
+    const i = this.interaction;
+    const me = this.opts.myColor;
+    if (!me || i.mode === 'none') return;
+    const pts: Vector3[] = [];
+    if (i.mode === 'move') {
+      const room = this.player.room;
+      for (const o of i.options) {
+        const a = this.actor(me, o.piece);
+        if (a) pts.push(a.position.clone());
+        pts.push(this.layout.position(me, o.to, o.piece, o.lane ?? room?.match?.teams[me]?.lanes[o.piece] ?? 0));
+      }
+    } else if (i.mode === 'target') {
+      for (const t of i.targets) {
+        const a = this.actor(t.color, t.piece);
+        if (a) pts.push(a.position.clone());
+      }
+    } else if (i.mode === 'tile') {
+      for (const id of i.tiles) {
+        const n = this.layout.nodes.get(id);
+        if (n) pts.push(Vector3.FromArray(n.pos));
+      }
+    }
+    this.director.frame(pts);
+  }
+
+  /** Hotkeys and hero cards: look at one piece, a camp, or the whole map. */
+  focusPiece(color: Color, piece: number) {
+    const a = this.actor(color, piece);
+    if (a) this.director.followTarget(() => a.position, 10, 0.92);
+  }
+
+  focusCamp(color: Color) {
+    const c = Vector3.FromArray(this.opts.map.camps[color].center);
+    this.director.followTarget(() => c, 12, 0.9);
+  }
+
+  overview() {
+    this.director.overview();
   }
 
   private allowed(): Set<CharacterActor> {
     const i = this.interaction;
     const set = new Set<CharacterActor>();
     const me = this.opts.myColor;
-    if (i.mode === 'move' && me) i.pieces.forEach((p) => this.actor(me, p) && set.add(this.actor(me, p)!));
+    if (i.mode === 'move' && me) i.options.forEach((o) => this.actor(me, o.piece) && set.add(this.actor(me, o.piece)!));
     if (i.mode === 'target') i.targets.forEach((t) => this.actor(t.color, t.piece) && set.add(this.actor(t.color, t.piece)!));
     return set;
   }
 
-  private handlePick(actor: CharacterActor | undefined) {
-    if (!actor || this.player.busy || !this.allowed().has(actor)) return;
-    this.onPick({ color: actor.team, piece: actor.piece });
+  /** Called by hero cards and 3D clicks alike. */
+  pickPiece(color: Color, piece: number) {
+    const i = this.interaction;
+    if (this.player.busy) return;
+    if (i.mode === 'move' && color === this.opts.myColor) {
+      const opts = i.options.filter((o) => o.piece === piece);
+      if (!opts.length) return;
+      if (opts.length > 1) {
+        // A fork: show both landing tiles and wait for a choice.
+        const tiles = opts.map((o) => this.layout.nodeAt(color, o.to, o.lane ?? 0)!.id) as [string, string];
+        this.laneChoice = { piece, tiles };
+        this.refreshHighlights();
+        this.director.frame(tiles.map((id) => Vector3.FromArray(this.layout.nodes.get(id)!.pos)).concat([this.actor(color, piece)!.position.clone()]));
+        this.onCue('step');
+        return;
+      }
+      this.onPick({ color, piece, lane: opts[0].lane });
+      return;
+    }
+    if (i.mode === 'target' && i.targets.some((t) => t.color === color && t.piece === piece)) {
+      this.onPick({ color, piece });
+    }
   }
 
-  private handleHover(actor: CharacterActor | undefined) {
+  private handlePick(actor: CharacterActor | undefined) {
+    if (!actor || this.player.busy || !this.allowed().has(actor)) return;
+    this.pickPiece(actor.team, actor.piece);
+  }
+
+  private handleTile(nodeId: string) {
+    if (this.player.busy) return;
+    if (this.laneChoice) {
+      const lane = this.laneChoice.tiles.indexOf(nodeId);
+      const piece = this.laneChoice.piece;
+      this.laneChoice = null;
+      this.refreshHighlights();
+      if (lane >= 0 && this.opts.myColor) this.onPick({ color: this.opts.myColor, piece, lane });
+      return;
+    }
+    if (this.interaction.mode === 'tile' && this.interaction.tiles.includes(nodeId)) this.onPickTile(nodeId);
+  }
+
+  private handleHover(actor: CharacterActor | undefined, overTile: boolean) {
     const ok = actor && !this.player.busy && this.allowed().has(actor) ? actor : null;
-    if (ok === this.hovered) return;
     this.hovered = ok;
-    this.canvas.style.cursor = ok ? 'pointer' : '';
+    this.canvas.style.cursor = ok || overTile ? 'pointer' : '';
   }
 
   focusDepth(at: Vector3) {

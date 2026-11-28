@@ -83,6 +83,21 @@ export class CameraDirector {
     this.userUntil = 0;
   }
 
+  /** Frame a set of points (e.g. every hero you can move, or a caster and its targets). */
+  frame(points: Vector3[], beta = 0.85) {
+    if (!points.length) return;
+    const center = points.reduce((a, p) => a.addInPlace(p), Vector3.Zero()).scaleInPlace(1 / points.length);
+    const spread = Math.max(...points.map((p) => Vector3.Distance(p, center)));
+    this.follow = null;
+    this.stiffness = 2.6;
+    this.goal = {
+      target: center,
+      radius: Math.min(this.bounds * 1.9, Math.max(11, spread * 2.3 + 7)),
+      beta,
+    };
+    this.userUntil = 0;
+  }
+
   addShake(amount: number) {
     this.shake = Math.max(this.shake, amount);
   }

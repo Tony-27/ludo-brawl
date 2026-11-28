@@ -62,6 +62,9 @@ export class ApiService {
   setMap(code: string, mapId: string) {
     return this.call<RoomView>('post', `/api/rooms/${enc(code)}/map`, { mapId });
   }
+  setPractice(code: string, enabled: boolean) {
+    return this.call<RoomView>('post', `/api/rooms/${enc(code)}/practice`, { enabled });
+  }
   start(code: string) {
     return this.call<RoomView>('post', `/api/rooms/${enc(code)}/start`, {});
   }

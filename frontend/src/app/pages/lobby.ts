@@ -25,7 +25,6 @@ export class LobbyView {
     COLORS.map((color) => ({ color, player: this.room().players.find((p) => p.color === color) ?? null })),
   );
   protected selectable = computed(() => this.store.heroes().filter((h) => h.selectable));
-  protected upcoming = computed(() => this.store.heroes().filter((h) => !h.selectable));
   protected myHero = computed(() => this.store.hero(this.me()?.hero));
   protected currentMap = computed(() => this.store.maps().find((m) => m.id === this.room().mapId));
   protected canStart = computed(() => this.store.isHost() && this.room().players.length >= 2);
@@ -38,6 +37,18 @@ export class LobbyView {
 
   protected skinName(p: PlayerView) {
     return this.store.hero(p.hero)?.skins.find((s) => s.id === p.skin)?.name ?? '';
+  }
+
+  protected featureLabel(f: string): string {
+    const labels: Record<string, string> = {
+      pit: 'pits',
+      slide: 'slides',
+      portal: 'portals',
+      crumble: 'crumbling bridges',
+      current: 'currents',
+      forks: 'forked paths',
+    };
+    return labels[f] ?? f;
   }
 
   protected pickHero(h: HeroInfo) {

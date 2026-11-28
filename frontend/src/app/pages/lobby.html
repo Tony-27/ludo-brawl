@@ -16,29 +16,40 @@
         @for (h of selectable(); track h.id) {
           <button type="button" class="hero" [class.active]="h.id === me()?.hero" (click)="pickHero(h)" [disabled]="store.busy()">
             <span class="hero-name">{{ h.name }}</span>
-            <span class="hero-title">{{ h.title }}</span>
-            @for (a of h.abilities; track a.id) {
-              <span class="ability"><b>{{ a.name }}</b> <i>{{ a.cost }}◆</i><br />{{ a.description }}</span>
-            }
-            @if (h.passive) {
-              <span class="passive">{{ h.passive }}</span>
-            }
+            <span class="role">{{ h.role }}</span>
+            <span class="kit">
+              @for (a of h.abilities; track a.id) {
+                <span class="pill" [class.ult]="a.slot === 'ultimate'">{{ a.name }}</span>
+              }
+            </span>
           </button>
         }
       </div>
       @if (myHero(); as h) {
-        <div class="skins">
-          <span class="label">Skin</span>
-          @for (s of h.skins; track s.id) {
-            <button type="button" class="skin" [class]="s.rarity" [class.active]="s.id === me()?.skin" (click)="pickSkin(s.id)" [disabled]="store.busy()">
-              {{ s.name }}
-              <small>{{ s.rarity }}</small>
-            </button>
+        <div class="detail">
+          <div class="detail-head">
+            <strong>{{ h.name }}</strong> <em>{{ h.title }}</em>
+          </div>
+          @for (a of h.abilities; track a.id) {
+            <div class="ability" [class.ult]="a.slot === 'ultimate'">
+              <span class="slot">{{ a.slot === 'ultimate' ? 'Ultimate · once per match' : a.slot }}</span>
+              <b>{{ a.name }}</b> <i>{{ a.cost }}◆</i>
+              <p>{{ a.description }}</p>
+            </div>
           }
+          @if (h.passive) {
+            <span class="passive">{{ h.passive }}</span>
+          }
+          <div class="skins">
+            <span class="label">Skin</span>
+            @for (s of h.skins; track s.id) {
+              <button type="button" class="skin" [class]="s.rarity" [class.active]="s.id === me()?.skin" (click)="pickSkin(s.id)" [disabled]="store.busy()">
+                {{ s.name }}
+                <small>{{ s.rarity }}</small>
+              </button>
+            }
+          </div>
         </div>
-      }
-      @if (upcoming().length) {
-        <p class="soon">Coming soon: @for (h of upcoming(); track h.id) {<span>{{ h.name }}</span>}</p>
       }
     </section>
 
@@ -88,12 +99,16 @@
         >
           <strong>{{ m.name }}</strong>
           <span>{{ m.description }}</span>
-          <small>{{ m.tiles }} tiles</small>
+          <small>{{ m.tiles }} tiles · {{ m.piecesPerTeam }} heroes each @for (f of m.features; track f) { · {{ featureLabel(f) }} }</small>
         </button>
       }
       @if (!store.isHost()) {
         <p class="hint">The host picks the battlefield.</p>
       }
+      <label class="practice-toggle" [class.on]="room().practice">
+        <input type="checkbox" [checked]="room().practice" [disabled]="!store.isHost() || store.busy()" (change)="store.setPractice(!room().practice)" />
+        <span><b>Practice mode</b> — choose your dice rolls and refill mana to try heroes out. Not recorded.</span>
+      </label>
     </section>
   </div>
 
