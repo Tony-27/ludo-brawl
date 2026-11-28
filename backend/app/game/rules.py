@@ -433,7 +433,7 @@ class Match:
             self._emit(ev.Captured(color=vc, piece=vi, byColor=color, byPiece=piece, at=at))
             self._gain_mana(vc, self.config.mana_knocked_out, "knockedOut")
             captured = True
-            if HEROES[self.teams[color].hero].passive == "bushido":
+            if HEROES[self.teams[color].hero].passive in ("bushido", "bloodlust"):
                 self._gain_mana(color, self.config.mana_bushido, "passive")
         return captured
 

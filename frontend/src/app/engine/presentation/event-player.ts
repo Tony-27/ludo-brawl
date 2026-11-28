@@ -35,6 +35,9 @@ type Ev<T extends GameEvent['type']> = Extract<GameEvent, { type: T }>;
 const IMPACT_WORDS = ['BONK!', 'POW!', 'WHAM!', 'SMASH!', 'KO!', 'THWACK!'];
 const ABILITY_TITLES: Record<string, string> = {
   quick_draw: 'QUICK DRAW',
+  charge: 'CHARGE!',
+  cleave: 'CLEAVE',
+  berserker_rage: 'BERSERKER RAGE',
   katana_slash: 'KATANA SLASH',
   thousand_cuts: 'THOUSAND CUTS',
   zap: 'ZAP!',
@@ -53,7 +56,7 @@ const ABILITY_TITLES: Record<string, string> = {
   fire_breath: 'FIRE BREATH',
   inferno: 'INFERNO',
 };
-const ULTIMATES = new Set(['thousand_cuts', 'meteor', 'rally', 'rain_of_arrows', 'overgrowth', 'inferno']);
+const ULTIMATES = new Set(['berserker_rage', 'thousand_cuts', 'meteor', 'rally', 'rain_of_arrows', 'overgrowth', 'inferno']);
 
 /**
  * Plays server events in order as choreographed beats (camera + characters +
@@ -101,12 +104,24 @@ export class EventPlayer {
       }
       this.gs.timeScale = this.queue.length > 1 ? 1.8 : 1;
       const msg = this.queue.shift()!;
+      // Watchdog: animations must never be able to stall the game.
+      const budget = 5000 + msg.events.length * 2500;
+      let timedOut = false;
       try {
-        await this.play(msg.events);
+        await Promise.race([
+          this.play(msg.events),
+          new Promise<void>((resolve) =>
+            setTimeout(() => {
+              timedOut = true;
+              resolve();
+            }, budget),
+          ),
+        ]);
       } catch (e) {
         console.error('event playback failed', e);
       }
-      this.reconcile(msg.room, false);
+      if (timedOut) console.warn('event playback took too long; snapping to the latest state');
+      this.reconcile(msg.room, timedOut);
     }
     this.gs.timeScale = 1;
     this.running = false;
@@ -119,6 +134,7 @@ export class EventPlayer {
     this.room = room;
     const match = room.match;
     if (!match) return;
+    if (instant) this.gs.dice.root.setEnabled(false);
     this.gs.world.setTurnColor(match.phase === 'over' ? null : match.current);
     for (const [color, team] of Object.entries(match.teams) as [Color, (typeof match.teams)[string]][]) {
       team.pieces.forEach((progress, i) => {
@@ -426,10 +442,12 @@ export class EventPlayer {
 
     switch (e.ability) {
       case 'quick_draw':
+      case 'charge':
       case 'dive':
         if (caster) await caster.oneShot('cast', 1.6);
         break;
       case 'katana_slash':
+      case 'cleave':
       case 'fire_breath':
       case 'piercing_arrow': {
         if (caster && tiles.length) caster.faceTo(tiles[tiles.length - 1]);
@@ -506,6 +524,7 @@ export class EventPlayer {
         break;
       }
       case 'thousand_cuts':
+      case 'berserker_rage':
       case 'rain_of_arrows':
       case 'inferno':
       case 'overgrowth': {
@@ -516,7 +535,7 @@ export class EventPlayer {
         this.gs.onCue(e.ability === 'inferno' ? 'fire' : e.ability === 'overgrowth' ? 'roots' : 'slash');
         for (const t of tiles) {
           if (e.ability === 'rain_of_arrows') this.gs.fx.lightning(t.add(new Vector3(1, 7, 0)), t.add(new Vector3(0, 0.4, 0)), [1, 0.9, 0.6]);
-          else if (e.ability === 'thousand_cuts') this.gs.fx.slash(t, Vector3.Right(), color, 1.2);
+          else if (e.ability === 'thousand_cuts' || e.ability === 'berserker_rage') this.gs.fx.slash(t, Vector3.Right(), color, 1.2);
           this.gs.fx.impact(t, color, false);
         }
         this.gs.director.addShake(0.6);

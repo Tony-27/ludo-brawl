@@ -86,6 +86,8 @@ export class CharacterActor {
       shadows.addShadowCaster(mesh);
       this.pickMeshes.push(mesh);
     }
+    this.buildExtras(model, shadows);
+
     for (const g of inst.animationGroups) {
       g.stop();
       g.enableBlending = true;
@@ -143,19 +145,110 @@ export class CharacterActor {
     this.play('idle');
   }
 
+  // ------------------------------------------------------------------ gear
+  private wings: Mesh[] = [];
+
+  /** Hats, blades and wings built in code and attached to bones (placeholders for custom art). */
+  private buildExtras(model: TransformNode, shadows: ShadowGenerator) {
+    if (!this.skin.extras?.length) return;
+    const nodes = model.getDescendants(false);
+    const bone = (name: string) => nodes.find((n) => n.name === name) as TransformNode | undefined;
+    const add = (mesh: Mesh, parent: TransformNode | undefined) => {
+      if (!parent) {
+        mesh.dispose();
+        return;
+      }
+      mesh.parent = parent;
+      mesh.isPickable = true;
+      mesh.metadata = { actor: this };
+      mesh.receiveShadows = true;
+      shadows.addShadowCaster(mesh);
+      this.pickMeshes.push(mesh);
+    };
+    const mat = (name: string, rgb: [number, number, number], spec = 0.05) => {
+      const m = new StandardMaterial(name, this.scene);
+      m.diffuseColor = new Color3(...rgb);
+      m.specularColor = new Color3(spec, spec, spec);
+      return m;
+    };
+    for (const extra of this.skin.extras) {
+      if (extra.kind === 'kasa') {
+        // Wide straw cone hat, tipped slightly forward over the eyes.
+        const color = extra.color ?? [0.78, 0.64, 0.38];
+        const hat = MeshBuilder.CreateCylinder('kasa', { height: 0.48, diameterTop: 0.1, diameterBottom: 1.95, tessellation: 32 }, this.scene);
+        hat.material = mat('kasaMat', color);
+        hat.position.set(0, 0.98, 0.03);
+        hat.rotation.x = -0.14;
+        add(hat, bone('head'));
+        const band = MeshBuilder.CreateTorus('kasaBand', { diameter: 0.95, thickness: 0.08, tessellation: 28 }, this.scene);
+        band.material = mat('kasaBandMat', [color[0] * 0.45, color[1] * 0.4, color[2] * 0.35]);
+        band.position.set(0, 0.84, 0.02);
+        band.rotation.x = -0.14;
+        add(band, bone('head'));
+      } else if (extra.kind === 'katana') {
+        const hand = bone('handslot.r');
+        const grip = MeshBuilder.CreateCylinder('katanaGrip', { height: 0.62, diameter: 0.1, tessellation: 8 }, this.scene);
+        grip.material = mat('katanaGripMat', [0.12, 0.08, 0.1]);
+        grip.position.y = -0.02;
+        add(grip, hand);
+        const guard = MeshBuilder.CreateCylinder('katanaGuard', { height: 0.05, diameter: 0.32, tessellation: 16 }, this.scene);
+        guard.material = mat('katanaGuardMat', [0.75, 0.6, 0.25], 0.6);
+        guard.position.y = 0.3;
+        add(guard, hand);
+        // A long, slightly curved single-edged blade.
+        const blade = MeshBuilder.CreateBox('katanaBlade', { width: 0.075, height: 1.75, depth: 0.022 }, this.scene);
+        const steel = mat('katanaSteel', [0.85, 0.88, 0.92], 0.9);
+        steel.specularPower = 96;
+        steel.emissiveColor = new Color3(0.12, 0.12, 0.14);
+        blade.material = steel;
+        blade.position.set(0.02, 1.18, 0);
+        blade.rotation.z = -0.045;
+        add(blade, hand);
+      } else if (extra.kind === 'wings') {
+        const color = extra.color ?? [0.85, 0.28, 0.1];
+        const membrane = mat('wingMat', color, 0.1);
+        membrane.backFaceCulling = false;
+        membrane.emissiveColor = new Color3(color[0] * 0.25, color[1] * 0.25, color[2] * 0.25);
+        for (const side of [-1, 1]) {
+          const wing = MeshBuilder.CreateDisc('wing', { radius: 0.95, tessellation: 3, sideOrientation: Mesh.DOUBLESIDE }, this.scene);
+          wing.material = membrane;
+          wing.position.set(side * 0.35, 0.45, -0.38);
+          wing.rotation.set(0, side * 0.55, side * 0.35);
+          wing.scaling.set(1.3, 0.75, 1);
+          add(wing, bone('chest'));
+          this.wings.push(wing);
+        }
+      }
+    }
+  }
+
   // ------------------------------------------------------------------ animation
   play(state: AnimState, opts: { loop?: boolean; speed?: number } = {}): Promise<void> {
     const loop = opts.loop ?? (state === 'idle' || state === 'run' || state === 'castLoop');
     const group = this.anims.get(this.skin.anims[state]) ?? this.anims.get(this.skin.anims.idle);
     if (!group) return Promise.resolve();
-    if (this.current === group && loop && this.currentState === state) return Promise.resolve();
-    if (this.current && this.current !== group) this.current.stop();
+    if (this.current === group && loop && this.currentState === state && group.isPlaying) return Promise.resolve();
+    // Restart cleanly: starting a group that is already playing is a no-op in Babylon,
+    // which would leave a one-shot waiting forever for an end that never comes.
+    if (this.current && (this.current !== group || !loop)) this.current.stop();
+    if (group.isPlaying) group.stop();
     this.current = group;
     this.currentState = state;
-    group.start(loop, opts.speed ?? 1, group.from, group.to, false);
+    const speed = opts.speed ?? 1;
+    group.start(loop, speed, group.from, group.to, false);
     if (loop) return Promise.resolve();
     return new Promise((resolve) => {
-      group.onAnimationGroupEndObservable.addOnce(() => resolve());
+      let done = false;
+      const finish = () => {
+        if (!done) {
+          done = true;
+          resolve();
+        }
+      };
+      group.onAnimationGroupEndObservable.addOnce(finish);
+      // Safety net: never wait longer than the clip itself (plus slack).
+      const fps = group.targetedAnimations[0]?.animation.framePerSecond || 60;
+      setTimeout(finish, ((group.to - group.from) / fps / Math.max(0.1, speed)) * 1000 + 600);
     });
   }
 
@@ -302,6 +395,7 @@ export class CharacterActor {
       this.ring.scaling.set(1, 1, 1);
     }
     if (this.shield.isEnabled()) this.shield.rotation.y += dt;
+    this.wings.forEach((w, i) => (w.rotation.y = (i === 0 ? -1 : 1) * (0.55 + Math.sin(t * 3 + this.piece) * 0.25)));
     if (this.roots.isEnabled()) this.roots.rotation.y += dt * 0.5;
   }
 

@@ -502,3 +502,44 @@
   &:hover .tip { opacity: 1; }
 }
 .spell:disabled:hover .tip { opacity: 1; }
+
+/* ---------------------------------------------------------------- settings */
+.settings {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  z-index: 9;
+  width: 300px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  h3 { margin: 0 0 4px; }
+  .label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.12em; color: var(--muted); margin-top: 4px; }
+  .small { margin: 0; font-size: 0.82rem; color: var(--muted); }
+  .opt {
+    font: inherit;
+    color: var(--text);
+    text-align: left;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 2px solid #ffffff22;
+    background: #ffffff0d;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    small { color: var(--muted); font-size: 0.78rem; }
+    &.on { border-color: var(--yellow); background: #f5b80f1a; }
+  }
+  .close {
+    font: inherit;
+    margin-top: 4px;
+    padding: 8px;
+    border-radius: 10px;
+    border: 1px solid #ffffff2a;
+    background: none;
+    color: var(--muted);
+    cursor: pointer;
+  }
+}

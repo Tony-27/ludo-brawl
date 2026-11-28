@@ -55,6 +55,8 @@ export interface SkinArt {
   vfx: [number, number, number];
   anims: Record<AnimState, string>;
   scale: number;
+  /** Extra pieces of gear built in code and attached to the rig (until custom art exists). */
+  extras?: { kind: 'kasa' | 'katana' | 'wings'; color?: [number, number, number] }[];
 }
 
 const KNIGHT_PROPS = ['1H_Sword_Offhand', 'Badge_Shield', 'Rectangle_Shield', 'Round_Shield', 'Spike_Shield', '1H_Sword', '2H_Sword', 'Knight_Helmet'];
@@ -63,25 +65,50 @@ const MAGE_PROPS = ['Spellbook', 'Spellbook_open', '1H_Wand', '2H_Staff', 'Mage_
 const ROGUE_PROPS = ['Knife_Offhand', '1H_Crossbow', '2H_Crossbow', 'Knife', 'Throwable'];
 
 export const SKINS: Record<string, SkinArt> = {
+  // The lone samurai: straw kasa hat and a katana (body: armoured knight rig, helmet off).
   samurai_default: {
     id: 'samurai_default',
     model: 'characters/Knight.glb',
-    props: ['2H_Sword'],
+    props: [],
     allProps: KNIGHT_PROPS,
     teamTint: 'Cape',
+    tint: [0.72, 0.68, 0.66],
     vfx: [1, 0.85, 0.55],
     anims: { ...KAYKIT_ANIMS, idle: '2H_Melee_Idle', attack: '2H_Melee_Attack_Slice', cast: '2H_Melee_Attack_Spin' },
     scale: 0.72,
+    extras: [{ kind: 'kasa', color: [0.78, 0.64, 0.38] }, { kind: 'katana' }],
   },
   samurai_oni: {
     id: 'samurai_oni',
+    model: 'characters/Knight.glb',
+    props: [],
+    allProps: KNIGHT_PROPS,
+    teamTint: 'Cape',
+    tint: [0.85, 0.38, 0.38],
+    vfx: [1, 0.25, 0.2],
+    anims: { ...KAYKIT_ANIMS, idle: '2H_Melee_Idle', attack: '2H_Melee_Attack_Slice', cast: '2H_Melee_Attack_Spin' },
+    scale: 0.72,
+    extras: [{ kind: 'kasa', color: [0.22, 0.1, 0.09] }, { kind: 'katana' }],
+  },
+  viking_default: {
+    id: 'viking_default',
     model: 'characters/Barbarian.glb',
     props: ['2H_Axe', 'Barbarian_Hat'],
     allProps: BARBARIAN_PROPS,
     teamTint: 'Cape',
-    tint: [1.15, 0.75, 0.75],
-    vfx: [1, 0.25, 0.2],
+    vfx: [0.8, 0.9, 1],
     anims: { ...KAYKIT_ANIMS, idle: '2H_Melee_Idle', attack: '2H_Melee_Attack_Chop', cast: '2H_Melee_Attack_Spin' },
+    scale: 0.72,
+  },
+  viking_jarl: {
+    id: 'viking_jarl',
+    model: 'characters/Barbarian.glb',
+    props: ['1H_Axe', 'Barbarian_Round_Shield', 'Barbarian_Hat'],
+    allProps: BARBARIAN_PROPS,
+    teamTint: 'Cape',
+    tint: [1.15, 1.0, 0.72],
+    vfx: [1, 0.85, 0.4],
+    anims: { ...KAYKIT_ANIMS, attack: '1H_Melee_Attack_Chop', cast: '1H_Melee_Attack_Slice_Horizontal' },
     scale: 0.72,
   },
   wizard_default: {
@@ -169,28 +196,30 @@ export const SKINS: Record<string, SkinArt> = {
     anims: { ...KAYKIT_ANIMS, cast: 'Spellcast_Raise', attack: 'Spellcast_Shoot' },
     scale: 0.72,
   },
-  // Placeholder until we have a dragon: a fire-tinted barbarian.
+  // Placeholder until we have a dragon: a winged, fire-tinted knight.
   dragon_rider_default: {
     id: 'dragon_rider_default',
-    model: 'characters/Barbarian.glb',
-    props: ['1H_Axe', 'Barbarian_Round_Shield', 'Barbarian_Hat'],
-    allProps: BARBARIAN_PROPS,
+    model: 'characters/Knight.glb',
+    props: ['1H_Sword', 'Spike_Shield', 'Knight_Helmet'],
+    allProps: KNIGHT_PROPS,
     teamTint: 'Cape',
-    tint: [1.2, 0.85, 0.7],
+    tint: [1.12, 0.72, 0.58],
     vfx: [1, 0.5, 0.15],
     anims: { ...KAYKIT_ANIMS, attack: '1H_Melee_Attack_Chop', cast: 'Throw' },
     scale: 0.72,
+    extras: [{ kind: 'wings', color: [0.85, 0.28, 0.1] }],
   },
   dragon_rider_storm: {
     id: 'dragon_rider_storm',
-    model: 'characters/Barbarian.glb',
-    props: ['1H_Axe', '1H_Axe_Offhand', 'Barbarian_Hat'],
-    allProps: BARBARIAN_PROPS,
+    model: 'characters/Knight.glb',
+    props: ['1H_Sword', 'Spike_Shield', 'Knight_Helmet'],
+    allProps: KNIGHT_PROPS,
     teamTint: 'Cape',
-    tint: [0.7, 0.88, 1.2],
+    tint: [0.7, 0.85, 1.15],
     vfx: [0.5, 0.85, 1],
-    anims: { ...KAYKIT_ANIMS, attack: 'Dualwield_Melee_Attack_Chop', cast: 'Throw' },
+    anims: { ...KAYKIT_ANIMS, attack: '1H_Melee_Attack_Chop', cast: 'Throw' },
     scale: 0.72,
+    extras: [{ kind: 'wings', color: [0.25, 0.55, 0.95] }],
   },
 };
 

@@ -135,8 +135,29 @@ export class RoomStore {
         return;
       }
       const delay = Math.min(1000 * 2 ** this.retry++, 8000);
-      this.retryTimer = setTimeout(() => this.connect(), delay);
+      this.retryTimer = setTimeout(() => void this.reconnect(), delay);
     };
+  }
+
+  /** After a few failed attempts, check the room still exists (e.g. the server restarted). */
+  private async reconnect() {
+    const code = this.code;
+    if (!code) return;
+    if (this.retry >= 3) {
+      try {
+        const room = await this.api.room(code);
+        if (!room.players.some((p) => p.id === this.myId())) {
+          this.forget('You are no longer in that room.');
+          return;
+        }
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) {
+          this.forget('That room has closed.');
+          return;
+        }
+      }
+    }
+    if (this.code === code) this.connect();
   }
 
   private onMessage(msg: ServerMessage) {

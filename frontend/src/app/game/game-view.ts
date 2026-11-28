@@ -57,6 +57,7 @@ export class GameView implements OnDestroy {
   protected feed = signal<FeedLine[]>([]);
   protected showResults = signal(false);
   protected showHelp = signal(false);
+  protected showSettings = signal(false);
   protected forcedDice = signal<number | null>(null);
 
   protected room = computed(() => this.store.room()!);
@@ -264,10 +265,19 @@ export class GameView implements OnDestroy {
     else this.scene.focusPiece(me, piece);
   }
 
-  protected setQuality(q: Quality) {
-    if (q === this.quality()) return;
+  /** Switch graphics quality by rebuilding the 3D scene in place (no page reload). */
+  protected async setQuality(q: Quality) {
+    if (q === this.quality() || !this.ready()) return;
     localStorage.setItem(QUALITY_KEY, q);
-    location.reload();
+    this.quality.set(q);
+    this.targeting.set(null);
+    this.subs.forEach((s) => s.unsubscribe());
+    this.subs = [];
+    this.scene?.dispose();
+    this.scene = null;
+    this.ready.set(false);
+    this.loading.set(0);
+    await this.boot();
   }
 
   protected forceDice(v: number) {
@@ -288,6 +298,7 @@ export class GameView implements OnDestroy {
       case 'Escape':
         this.targeting.set(null);
         this.showHelp.set(false);
+        this.showSettings.set(false);
         return;
       case ' ':
       case 'Enter':
