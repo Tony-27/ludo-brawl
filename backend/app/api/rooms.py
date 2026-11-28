@@ -30,6 +30,10 @@ class MapBody(BaseModel):
     mapId: str
 
 
+class PracticeBody(BaseModel):
+    enabled: bool
+
+
 @router.post("", status_code=201)
 async def create(
     body: CreateBody, guest: Guest = Depends(current_guest), rooms: RoomService = Depends(get_rooms)
@@ -85,6 +89,15 @@ async def set_map(
 ) -> RoomView:
     room, seat = _seat(code, guest, rooms)
     rooms.set_map(room, seat, body.mapId)
+    return rooms.view(room)
+
+
+@router.post("/{code}/practice")
+async def set_practice(
+    code: str, body: PracticeBody, guest: Guest = Depends(current_guest), rooms: RoomService = Depends(get_rooms)
+) -> RoomView:
+    room, seat = _seat(code, guest, rooms)
+    rooms.set_practice(room, seat, body.enabled)
     return rooms.view(room)
 
 

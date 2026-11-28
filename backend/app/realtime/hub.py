@@ -12,7 +12,16 @@ from pydantic import TypeAdapter, ValidationError
 
 from ..db import repo
 from ..rooms.service import LudoError, Room, RoomService
-from .protocol import PROTOCOL_VERSION, CastCommand, ClientMessage, MoveCommand, PingCommand, ResyncCommand, RollCommand
+from .protocol import (
+    PROTOCOL_VERSION,
+    CastCommand,
+    ClientMessage,
+    MoveCommand,
+    PingCommand,
+    PracticeCommand,
+    ResyncCommand,
+    RollCommand,
+)
 
 log = logging.getLogger("ludobrawl.ws")
 _client_message = TypeAdapter(ClientMessage)
@@ -106,9 +115,11 @@ async def room_socket(ws: WebSocket, code: str, token: str | None = None) -> Non
             elif isinstance(msg, RollCommand):
                 rooms.roll(room, current)
             elif isinstance(msg, MoveCommand):
-                rooms.move(room, current, msg.piece)
+                rooms.move(room, current, msg.piece, msg.lane)
             elif isinstance(msg, CastCommand):
                 rooms.cast(room, current, msg.ability, msg.target)
+            elif isinstance(msg, PracticeCommand):
+                rooms.practice(room, current, dice=msg.dice, mana=msg.mana)
         except LudoError as e:
             await ws.send_json({"type": "error", "message": e.message})
 

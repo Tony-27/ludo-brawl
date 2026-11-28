@@ -2,6 +2,7 @@
 
 Every event is a small pydantic model with a literal `type`, so the union
 below can be exported to JSON Schema and turned into TypeScript types.
+Positions are (progress, lane) on the piece's own route; see board.py.
 """
 
 from __future__ import annotations
@@ -14,7 +15,17 @@ from .board import Color
 
 
 class _Event(BaseModel):
-    model_config = ConfigDict(frozen=True)
+    model_config = ConfigDict(frozen=True, populate_by_name=True)
+
+
+class _Travel(_Event):
+    """Base for events that move one piece from one spot to another."""
+
+    color: Color
+    piece: int
+    start: int = Field(alias="from")
+    end: int = Field(alias="to")
+    lane: int = 0
 
 
 class TurnStarted(_Event):
@@ -28,7 +39,7 @@ class ManaChanged(_Event):
     color: Color
     mana: int
     delta: int
-    reason: Literal["turn", "rolledOne", "shrine", "knockedOut", "knockedBack", "cast", "passive"]
+    reason: Literal["turn", "rolledOne", "shrine", "knockedOut", "knockedBack", "cast", "passive", "burned", "practice"]
 
 
 class Rolled(_Event):
@@ -43,14 +54,10 @@ class TurnPassed(_Event):
     reason: Literal["noMoves", "threeSixes"]
 
 
-class Moved(_Event):
+class Moved(_Travel):
     type: Literal["moved"] = "moved"
-    color: Color
-    piece: int
-    start: int = Field(alias="from")
-    end: int = Field(alias="to")
     path: list[int]
-    model_config = ConfigDict(frozen=True, populate_by_name=True)
+    via: Literal["roll", "dash", "rally"] = "roll"
 
 
 class Captured(_Event):
@@ -61,7 +68,7 @@ class Captured(_Event):
     piece: int
     byColor: Color
     byPiece: int
-    at: int  # victim's progress before capture
+    at: int
 
 
 class AbilityCast(_Event):
@@ -75,28 +82,62 @@ class AbilityCast(_Event):
     tiles: list[str] = []  # node ids the effect covers (for VFX)
 
 
-class KnockedBack(_Event):
+class KnockedBack(_Travel):
     type: Literal["knockedBack"] = "knockedBack"
-    color: Color
-    piece: int
-    start: int = Field(alias="from")
-    end: int = Field(alias="to")
     byColor: Color
     ability: str
-    model_config = ConfigDict(frozen=True, populate_by_name=True)
 
 
-class Teleported(_Event):
+class Teleported(_Travel):
     type: Literal["teleported"] = "teleported"
+
+
+class Swapped(_Event):
+    type: Literal["swapped"] = "swapped"
     color: Color
     piece: int
-    start: int = Field(alias="from")
-    end: int = Field(alias="to")
-    model_config = ConfigDict(frozen=True, populate_by_name=True)
+    to: int
+    lane: int
+    otherColor: Color
+    otherPiece: int
+    otherTo: int
+    otherLane: int
+
+
+class Fell(_Event):
+    """Fell into a pit or crater: back to camp."""
+
+    type: Literal["fell"] = "fell"
+    color: Color
+    piece: int
+    at: int
+    tile: str
+
+
+class Slid(_Travel):
+    type: Literal["slid"] = "slid"
+
+
+class Portaled(_Travel):
+    type: Literal["portaled"] = "portaled"
+
+
+class Drifted(_Travel):
+    type: Literal["drifted"] = "drifted"
+
+
+class TileChanged(_Event):
+    """A tile gained or lost a temporary effect (or a bridge broke for good)."""
+
+    type: Literal["tileChanged"] = "tileChanged"
+    tile: str
+    effect: Literal["broken", "crater", "fire", "trap", "none"]
+    turns: int | None = None
+    owner: Color | None = None
 
 
 class Blocked(_Event):
-    """An attack hit a piece that was protected."""
+    """An attack or fall hit a piece that was protected."""
 
     type: Literal["blocked"] = "blocked"
     color: Color
@@ -139,6 +180,12 @@ GameEvent = Annotated[
     | AbilityCast
     | KnockedBack
     | Teleported
+    | Swapped
+    | Fell
+    | Slid
+    | Portaled
+    | Drifted
+    | TileChanged
     | Blocked
     | StatusChanged
     | PieceFinished

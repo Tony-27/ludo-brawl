@@ -55,6 +55,8 @@ class Room:
     code: str
     host_id: str
     map_id: str = DEFAULT_MAP
+    practice: bool = False  # sandbox: forced dice, free mana, not recorded
+    forced_dice: int | None = None
     seats: list[Seat] = field(default_factory=list)
     state: str = "lobby"  # lobby | playing | finished
     match: Match | None = None
@@ -288,6 +290,12 @@ class RoomService:
                 taken.add(x.color)
         self._changed(room)
 
+    def set_practice(self, room: Room, seat: Seat, enabled: bool) -> None:
+        self._require_host(room, seat)
+        self._require_lobby(room)
+        room.practice = enabled
+        self._changed(room)
+
     def start(self, room: Room, seat: Seat, *, seed: int | None = None) -> None:
         self._require_host(room, seat)
         self._require_lobby(room)
@@ -351,11 +359,23 @@ class RoomService:
 
     def roll(self, room: Room, seat: Seat) -> None:
         match = self._require_turn(room, seat)
-        self._run(room, lambda: match.roll(room.rng.randint(1, 6)))
+        value = room.forced_dice or room.rng.randint(1, 6)
+        room.forced_dice = None
+        self._run(room, lambda: match.roll(value))
 
-    def move(self, room: Room, seat: Seat, piece: int) -> None:
+    def move(self, room: Room, seat: Seat, piece: int, lane: int | None = None) -> None:
         match = self._require_turn(room, seat)
-        self._run(room, lambda: match.move(piece))
+        self._run(room, lambda: match.move(piece, lane))
+
+    def practice(self, room: Room, seat: Seat, *, dice: int | None, mana: int | None) -> None:
+        if not room.practice:
+            raise LudoError("Practice tools only work in practice rooms.", 403)
+        if room.state != "playing" or room.match is None:
+            raise LudoError("The game isn't running.", 409)
+        if dice is not None:
+            room.forced_dice = dice
+        events = room.match.practice_set_mana(seat.color, mana) if mana is not None else []
+        self._changed(room, events)
 
     def cast(self, room: Room, seat: Seat, ability: str, target: dict) -> None:
         match = self._require_turn(room, seat)
@@ -364,6 +384,8 @@ class RoomService:
     def _record(self, room: Room) -> None:
         match = room.match
         assert match is not None
+        if room.practice:
+            return  # sandbox games don't count
         place = {c: i + 1 for i, c in enumerate(match.ranking)}
         record = MatchRecord(
             room_code=room.code,
@@ -408,7 +430,7 @@ class RoomService:
     def auto_play(self, room: Room, seat: Seat) -> None:
         match = room.match
         assert match is not None
-        action = bots.choose_action(match)
+        action = bots.choose_action(match, room.rng)
         if action.kind == "cast" and not seat.is_bot:
             action = bots.BotAction("roll")  # don't spend an AFK player's mana
         if action.kind == "cast":
@@ -416,7 +438,7 @@ class RoomService:
         elif action.kind == "roll":
             self.roll(room, seat)
         else:
-            self.move(room, seat, action.piece or 0)
+            self.move(room, seat, action.piece or 0, action.lane)
 
     # ------------------------------------------------------------- views
     def view(self, room: Room) -> RoomView:
@@ -433,6 +455,7 @@ class RoomService:
             state=room.state,  # type: ignore[arg-type]
             hostId=room.host_id,
             mapId=room.map_id,
+            practice=room.practice,
             version=room.version,
             seq=room.seq,
             players=[

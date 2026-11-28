@@ -112,7 +112,7 @@ def classic_arena() -> dict:
         ox, oy = yard[color]
         camps[color] = {
             "center": w(ox + 3, oy + 3),
-            "slots": [w(ox + sx, oy + sy, 0.46) for sx, sy in [(2, 2), (4, 2), (2, 4), (4, 4)]],
+            "slots": [w(ox + sx, oy + sy, 0.46) for sx, sy in [(2, 2), (4, 2), (3, 4)]],
         }
 
     return {
@@ -120,7 +120,7 @@ def classic_arena() -> dict:
         "name": "Classic Arena",
         "description": "The original cross-shaped board, rebuilt as a stone arena.",
         "theme": "arena",
-        "piecesPerTeam": 4,
+        "piecesPerTeam": 3,
         "nodes": nodes,
         "loop": loop,
         "routes": routes,
@@ -194,7 +194,7 @@ def emerald_wilds() -> dict:
         sx, sz = -fz, fx  # sideways
         slots = [
             [r3(cx + sx * dx * 1.4 + fx * dy * 1.4), 0.5, r3(cz + sz * dx * 1.4 + fz * dy * 1.4)]
-            for dx, dy in [(-0.5, -0.5), (0.5, -0.5), (-0.5, 0.5), (0.5, 0.5)]
+            for dx, dy in [(-0.6, -0.4), (0.6, -0.4), (0.0, 0.55)]
         ]
         camps[color] = {"center": [r3(cx), 0.0, r3(cz)], "slots": slots}
 
@@ -217,7 +217,7 @@ def emerald_wilds() -> dict:
         "name": "Emerald Wilds",
         "description": "A winding trail through jungle, forest and ancient ruins, crossed by rivers.",
         "theme": "wilds",
-        "piecesPerTeam": 4,
+        "piecesPerTeam": 3,
         "nodes": nodes,
         "loop": loop,
         "routes": routes,
@@ -229,9 +229,116 @@ def emerald_wilds() -> dict:
     }
 
 
+# --------------------------------------------------------------------- forge
+def molten_forge() -> dict:
+    """Volcanic fortress: forks with a safe and a risky lane, crumbling bridges
+    over lava, portals and conveyor slides."""
+    n = 60
+    quarter = n // 4
+    start = {c: i * quarter for i, c in enumerate(COLORS)}
+    fork = range(4, 9)  # steps 4..8 of every quarter offer two lanes
+
+    def angle(i: float) -> float:
+        return math.pi * 0.75 - (i / n) * 2 * math.pi
+
+    def radius(a: float) -> float:
+        return 15.0 + 1.2 * math.sin(4 * a + 0.3)
+
+    def point(i: float, r: float | None = None, y: float = 0.0) -> list[float]:
+        a = angle(i)
+        rr = radius(a) if r is None else r
+        return [r3(math.cos(a) * rr), r3(y), r3(-math.sin(a) * rr)]
+
+    nodes, loop = [], []
+    for i in range(n):
+        q, owner = i % quarter, COLORS[i // quarter]
+        kind = "start" if q == 0 else "shrine" if q == 10 else "normal"
+        main = {"id": f"t{i}", "pos": point(i, y=0.1), "kind": kind}
+        if q in (11, 12):
+            main["hazard"] = {"type": "crumble", "uses": 3}
+            main["bridge"] = True
+            main["pos"] = point(i, y=0.45)
+        if q == 13 and owner in ("green", "blue"):
+            main["hazard"] = {"type": "portal", "to": f"t{(i + 5) % n}"}
+        if q == 2 and owner == "yellow":
+            main["hazard"] = {"type": "slide", "steps": -2}
+        if q in fork:
+            if q == 6:
+                main["kind"] = "safe"
+            # The risky lane bulges outwards over the lava flats.
+            bulge = 3.0 * math.sin(math.pi * (q - 3) / 6)
+            alt = {"id": f"a{i}", "pos": point(i, radius(angle(i)) + bulge, 0.2), "kind": "normal", "lane": 1}
+            if q == 5:
+                alt["hazard"] = {"type": "slide", "steps": 3}
+            if q == 6:
+                alt["hazard"] = {"type": "pit"}
+            if q == 7:
+                alt["kind"] = "shrine"
+            nodes += [main, alt]
+            loop.append([main["id"], alt["id"]])
+        else:
+            nodes.append(main)
+            loop.append(main["id"])
+
+    routes, camps = {}, {}
+    for color in COLORS:
+        s = start[color]
+        path = [loop[(s + k) % n] for k in range(n - 1)]
+        spoke = s - 1
+        r_out = radius(angle(spoke)) - 2.2
+        for k in range(5):
+            rr = r_out - k * ((r_out - 4.2) / 4)
+            nid = f"h_{color}_{k}"
+            nodes.append({"id": nid, "pos": point(spoke, rr, 0.2 + k * 0.18), "kind": "home"})
+            path.append(nid)
+        gid = f"goal_{color}"
+        nodes.append({"id": gid, "pos": point(spoke, 2.4, 1.3), "kind": "goal"})
+        path.append(gid)
+        routes[color] = path
+        ca = angle(s - 1.5)
+        cr = radius(ca) + 6.5
+        cx, cz = math.cos(ca) * cr, -math.sin(ca) * cr
+        fx, fz = math.cos(ca), -math.sin(ca)
+        sx, sz = -fz, fx
+        camps[color] = {
+            "center": [r3(cx), 0.0, r3(cz)],
+            "slots": [
+                [r3(cx + sx * dx * 1.4 + fx * dy * 1.4), 0.5, r3(cz + sz * dx * 1.4 + fz * dy * 1.4)]
+                for dx, dy in [(-0.6, -0.4), (0.6, -0.4), (0.0, 0.55)]
+            ],
+        }
+
+    # Lava flows outwards under each pair of crumbling bridges.
+    rivers = []
+    for c in COLORS:
+        a = angle(start[c] + 11.5)
+        pts = []
+        for k in range(9):
+            rr = 5.5 + k * 4.2
+            wobble = math.sin(k * 1.7) * 0.07
+            pts.append([r3(math.cos(a + wobble) * rr), r3(-math.sin(a + wobble) * rr)])
+        rivers.append({"points": pts, "width": 2.2, "kind": "lava"})
+
+    return {
+        "id": "molten_forge",
+        "name": "Molten Forge",
+        "description": "A volcanic fortress of forked paths, crumbling bridges over lava, portals and deadly pits.",
+        "theme": "forge",
+        "piecesPerTeam": 3,
+        "nodes": nodes,
+        "loop": loop,
+        "routes": routes,
+        "camps": camps,
+        "goal": [0.0, 1.2, 0.0],
+        "zones": [{"from": start[c], "to": start[c] + quarter - 1, "biome": "volcanic"} for c in COLORS],
+        "rivers": rivers,
+        "bounds": 27,
+    }
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    for m in (classic_arena(), emerald_wilds()):
+    for m in (classic_arena(), emerald_wilds(), molten_forge()):
         (OUT / f"{m['id']}.json").write_text(json.dumps(m, indent=1) + "\n", encoding="utf-8")
         print("wrote", m["id"], len(m["nodes"]), "nodes")
 

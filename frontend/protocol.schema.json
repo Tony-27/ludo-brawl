@@ -71,7 +71,7 @@
    "type": "object"
   },
   "Blocked": {
-   "description": "An attack hit a piece that was protected.",
+   "description": "An attack or fall hit a piece that was protected.",
    "properties": {
     "color": {
      "$ref": "#/$defs/Color"
@@ -168,6 +168,41 @@
    "title": "Color",
    "type": "string"
   },
+  "Drifted": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "from": {
+     "type": "integer"
+    },
+    "lane": {
+     "default": 0,
+     "type": "integer"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "to": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "drifted",
+     "default": "drifted",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "from",
+    "lane",
+    "piece",
+    "to",
+    "type"
+   ],
+   "title": "Drifted",
+   "type": "object"
+  },
   "ErrorMessage": {
    "properties": {
     "message": {
@@ -196,15 +231,21 @@
         "abilityCast": "#/$defs/AbilityCast",
         "blocked": "#/$defs/Blocked",
         "captured": "#/$defs/Captured",
+        "drifted": "#/$defs/Drifted",
+        "fell": "#/$defs/Fell",
         "gameOver": "#/$defs/GameOver",
         "knockedBack": "#/$defs/KnockedBack",
         "manaChanged": "#/$defs/ManaChanged",
         "moved": "#/$defs/Moved",
         "pieceFinished": "#/$defs/PieceFinished",
         "playerFinished": "#/$defs/PlayerFinished",
+        "portaled": "#/$defs/Portaled",
         "rolled": "#/$defs/Rolled",
+        "slid": "#/$defs/Slid",
         "statusChanged": "#/$defs/StatusChanged",
+        "swapped": "#/$defs/Swapped",
         "teleported": "#/$defs/Teleported",
+        "tileChanged": "#/$defs/TileChanged",
         "turnPassed": "#/$defs/TurnPassed",
         "turnStarted": "#/$defs/TurnStarted"
        },
@@ -237,6 +278,24 @@
        },
        {
         "$ref": "#/$defs/Teleported"
+       },
+       {
+        "$ref": "#/$defs/Swapped"
+       },
+       {
+        "$ref": "#/$defs/Fell"
+       },
+       {
+        "$ref": "#/$defs/Slid"
+       },
+       {
+        "$ref": "#/$defs/Portaled"
+       },
+       {
+        "$ref": "#/$defs/Drifted"
+       },
+       {
+        "$ref": "#/$defs/TileChanged"
        },
        {
         "$ref": "#/$defs/Blocked"
@@ -276,6 +335,37 @@
     "type"
    ],
    "title": "EventsMessage",
+   "type": "object"
+  },
+  "Fell": {
+   "description": "Fell into a pit or crater: back to camp.",
+   "properties": {
+    "at": {
+     "type": "integer"
+    },
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "tile": {
+     "type": "string"
+    },
+    "type": {
+     "const": "fell",
+     "default": "fell",
+     "type": "string"
+    }
+   },
+   "required": [
+    "at",
+    "color",
+    "piece",
+    "tile",
+    "type"
+   ],
+   "title": "Fell",
    "type": "object"
   },
   "GameOver": {
@@ -360,6 +450,10 @@
     "from": {
      "type": "integer"
     },
+    "lane": {
+     "default": 0,
+     "type": "integer"
+    },
     "piece": {
      "type": "integer"
     },
@@ -377,6 +471,7 @@
     "byColor",
     "color",
     "from",
+    "lane",
     "piece",
     "to",
     "type"
@@ -403,7 +498,9 @@
       "knockedOut",
       "knockedBack",
       "cast",
-      "passive"
+      "passive",
+      "burned",
+      "practice"
      ],
      "type": "string"
     },
@@ -425,6 +522,16 @@
   },
   "MatchView": {
    "properties": {
+    "castTargets": {
+     "additionalProperties": {
+      "items": {
+       "additionalProperties": true,
+       "type": "object"
+      },
+      "type": "array"
+     },
+     "type": "object"
+    },
     "castUsed": {
      "type": "boolean"
     },
@@ -450,6 +557,12 @@
     "mapId": {
      "type": "string"
     },
+    "moveOptions": {
+     "items": {
+      "$ref": "#/$defs/MoveOptionView"
+     },
+     "type": "array"
+    },
     "phase": {
      "enum": [
       "roll",
@@ -470,6 +583,12 @@
      },
      "propertyNames": {
       "$ref": "#/$defs/Color"
+     },
+     "type": "object"
+    },
+    "tiles": {
+     "additionalProperties": {
+      "$ref": "#/$defs/TileView"
      },
      "type": "object"
     },
@@ -495,14 +614,17 @@
     }
    },
    "required": [
+    "castTargets",
     "castUsed",
     "current",
     "lastRoll",
     "legalPieces",
     "mapId",
+    "moveOptions",
     "phase",
     "ranking",
     "teams",
+    "tiles",
     "turn",
     "turnOrder",
     "turnTimeLeftMs"
@@ -512,6 +634,19 @@
   },
   "MoveCommand": {
    "properties": {
+    "lane": {
+     "anyOf": [
+      {
+       "maximum": 1,
+       "minimum": 0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
     "piece": {
      "maximum": 7,
      "minimum": 0,
@@ -523,10 +658,38 @@
     }
    },
    "required": [
+    "lane",
     "piece",
     "type"
    ],
    "title": "MoveCommand",
+   "type": "object"
+  },
+  "MoveOptionView": {
+   "properties": {
+    "lane": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "to": {
+     "type": "integer"
+    }
+   },
+   "required": [
+    "lane",
+    "piece",
+    "to"
+   ],
+   "title": "MoveOptionView",
    "type": "object"
   },
   "Moved": {
@@ -535,6 +698,10 @@
      "$ref": "#/$defs/Color"
     },
     "from": {
+     "type": "integer"
+    },
+    "lane": {
+     "default": 0,
      "type": "integer"
     },
     "path": {
@@ -553,15 +720,26 @@
      "const": "moved",
      "default": "moved",
      "type": "string"
+    },
+    "via": {
+     "default": "roll",
+     "enum": [
+      "roll",
+      "dash",
+      "rally"
+     ],
+     "type": "string"
     }
    },
    "required": [
     "color",
     "from",
+    "lane",
     "path",
     "piece",
     "to",
-    "type"
+    "type",
+    "via"
    ],
    "title": "Moved",
    "type": "object"
@@ -673,6 +851,83 @@
    "title": "PongMessage",
    "type": "object"
   },
+  "Portaled": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "from": {
+     "type": "integer"
+    },
+    "lane": {
+     "default": 0,
+     "type": "integer"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "to": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "portaled",
+     "default": "portaled",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "from",
+    "lane",
+    "piece",
+    "to",
+    "type"
+   ],
+   "title": "Portaled",
+   "type": "object"
+  },
+  "PracticeCommand": {
+   "description": "Practice rooms only: force the next roll and/or set your mana.",
+   "properties": {
+    "dice": {
+     "anyOf": [
+      {
+       "maximum": 6,
+       "minimum": 1,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "mana": {
+     "anyOf": [
+      {
+       "maximum": 10,
+       "minimum": 0,
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "type": {
+     "const": "practice",
+     "type": "string"
+    }
+   },
+   "required": [
+    "dice",
+    "mana",
+    "type"
+   ],
+   "title": "PracticeCommand",
+   "type": "object"
+  },
   "ResyncCommand": {
    "properties": {
     "type": {
@@ -748,6 +1003,9 @@
      },
      "type": "array"
     },
+    "practice": {
+     "type": "boolean"
+    },
     "seq": {
      "type": "integer"
     },
@@ -769,11 +1027,47 @@
     "mapId",
     "match",
     "players",
+    "practice",
     "seq",
     "state",
     "version"
    ],
    "title": "RoomView",
+   "type": "object"
+  },
+  "Slid": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "from": {
+     "type": "integer"
+    },
+    "lane": {
+     "default": 0,
+     "type": "integer"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "to": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "slid",
+     "default": "slid",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "from",
+    "lane",
+    "piece",
+    "to",
+    "type"
+   ],
+   "title": "Slid",
    "type": "object"
   },
   "SnapshotMessage": {
@@ -829,6 +1123,52 @@
    "title": "StatusChanged",
    "type": "object"
   },
+  "Swapped": {
+   "properties": {
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "lane": {
+     "type": "integer"
+    },
+    "otherColor": {
+     "$ref": "#/$defs/Color"
+    },
+    "otherLane": {
+     "type": "integer"
+    },
+    "otherPiece": {
+     "type": "integer"
+    },
+    "otherTo": {
+     "type": "integer"
+    },
+    "piece": {
+     "type": "integer"
+    },
+    "to": {
+     "type": "integer"
+    },
+    "type": {
+     "const": "swapped",
+     "default": "swapped",
+     "type": "string"
+    }
+   },
+   "required": [
+    "color",
+    "lane",
+    "otherColor",
+    "otherLane",
+    "otherPiece",
+    "otherTo",
+    "piece",
+    "to",
+    "type"
+   ],
+   "title": "Swapped",
+   "type": "object"
+  },
   "TeamView": {
    "properties": {
     "finish": {
@@ -836,6 +1176,12 @@
     },
     "hero": {
      "type": "string"
+    },
+    "lanes": {
+     "items": {
+      "type": "integer"
+     },
+     "type": "array"
     },
     "mana": {
      "type": "integer"
@@ -857,15 +1203,20 @@
       "type": "array"
      },
      "type": "array"
+    },
+    "ultUsed": {
+     "type": "boolean"
     }
    },
    "required": [
     "finish",
     "hero",
+    "lanes",
     "mana",
     "maxMana",
     "pieces",
-    "statuses"
+    "statuses",
+    "ultUsed"
    ],
    "title": "TeamView",
    "type": "object"
@@ -876,6 +1227,10 @@
      "$ref": "#/$defs/Color"
     },
     "from": {
+     "type": "integer"
+    },
+    "lane": {
+     "default": 0,
      "type": "integer"
     },
     "piece": {
@@ -893,11 +1248,106 @@
    "required": [
     "color",
     "from",
+    "lane",
     "piece",
     "to",
     "type"
    ],
    "title": "Teleported",
+   "type": "object"
+  },
+  "TileChanged": {
+   "description": "A tile gained or lost a temporary effect (or a bridge broke for good).",
+   "properties": {
+    "effect": {
+     "enum": [
+      "broken",
+      "crater",
+      "fire",
+      "trap",
+      "none"
+     ],
+     "type": "string"
+    },
+    "owner": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Color"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "tile": {
+     "type": "string"
+    },
+    "turns": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    },
+    "type": {
+     "const": "tileChanged",
+     "default": "tileChanged",
+     "type": "string"
+    }
+   },
+   "required": [
+    "effect",
+    "owner",
+    "tile",
+    "turns",
+    "type"
+   ],
+   "title": "TileChanged",
+   "type": "object"
+  },
+  "TileView": {
+   "properties": {
+    "effect": {
+     "enum": [
+      "broken",
+      "crater",
+      "fire",
+      "trap"
+     ],
+     "type": "string"
+    },
+    "owner": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Color"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "turns": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    }
+   },
+   "required": [
+    "effect",
+    "owner",
+    "turns"
+   ],
+   "title": "TileView",
    "type": "object"
   },
   "TurnPassed": {
@@ -957,6 +1407,7 @@
      "cast": "#/$defs/CastCommand",
      "move": "#/$defs/MoveCommand",
      "ping": "#/$defs/PingCommand",
+     "practice": "#/$defs/PracticeCommand",
      "resync": "#/$defs/ResyncCommand",
      "roll": "#/$defs/RollCommand"
     },
@@ -973,6 +1424,9 @@
      "$ref": "#/$defs/CastCommand"
     },
     {
+     "$ref": "#/$defs/PracticeCommand"
+    },
+    {
      "$ref": "#/$defs/PingCommand"
     },
     {
@@ -987,15 +1441,21 @@
      "abilityCast": "#/$defs/AbilityCast",
      "blocked": "#/$defs/Blocked",
      "captured": "#/$defs/Captured",
+     "drifted": "#/$defs/Drifted",
+     "fell": "#/$defs/Fell",
      "gameOver": "#/$defs/GameOver",
      "knockedBack": "#/$defs/KnockedBack",
      "manaChanged": "#/$defs/ManaChanged",
      "moved": "#/$defs/Moved",
      "pieceFinished": "#/$defs/PieceFinished",
      "playerFinished": "#/$defs/PlayerFinished",
+     "portaled": "#/$defs/Portaled",
      "rolled": "#/$defs/Rolled",
+     "slid": "#/$defs/Slid",
      "statusChanged": "#/$defs/StatusChanged",
+     "swapped": "#/$defs/Swapped",
      "teleported": "#/$defs/Teleported",
+     "tileChanged": "#/$defs/TileChanged",
      "turnPassed": "#/$defs/TurnPassed",
      "turnStarted": "#/$defs/TurnStarted"
     },
@@ -1028,6 +1488,24 @@
     },
     {
      "$ref": "#/$defs/Teleported"
+    },
+    {
+     "$ref": "#/$defs/Swapped"
+    },
+    {
+     "$ref": "#/$defs/Fell"
+    },
+    {
+     "$ref": "#/$defs/Slid"
+    },
+    {
+     "$ref": "#/$defs/Portaled"
+    },
+    {
+     "$ref": "#/$defs/Drifted"
+    },
+    {
+     "$ref": "#/$defs/TileChanged"
     },
     {
      "$ref": "#/$defs/Blocked"
