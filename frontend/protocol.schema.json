@@ -176,9 +176,11 @@
     "from": {
      "type": "integer"
     },
-    "lane": {
-     "default": 0,
-     "type": "integer"
+    "path": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "piece": {
      "type": "integer"
@@ -195,12 +197,49 @@
    "required": [
     "color",
     "from",
-    "lane",
+    "path",
     "piece",
     "to",
     "type"
    ],
    "title": "Drifted",
+   "type": "object"
+  },
+  "Empowered": {
+   "description": "A team visited a Forge Anvil: its next spell hits harder.",
+   "properties": {
+    "active": {
+     "type": "boolean"
+    },
+    "color": {
+     "$ref": "#/$defs/Color"
+    },
+    "type": {
+     "const": "empowered",
+     "default": "empowered",
+     "type": "string"
+    }
+   },
+   "required": [
+    "active",
+    "color",
+    "type"
+   ],
+   "title": "Empowered",
+   "type": "object"
+  },
+  "EndTurnCommand": {
+   "description": "Skip the after-move cast window.",
+   "properties": {
+    "type": {
+     "const": "endTurn",
+     "type": "string"
+    }
+   },
+   "required": [
+    "type"
+   ],
+   "title": "EndTurnCommand",
    "type": "object"
   },
   "ErrorMessage": {
@@ -232,10 +271,12 @@
         "blocked": "#/$defs/Blocked",
         "captured": "#/$defs/Captured",
         "drifted": "#/$defs/Drifted",
+        "empowered": "#/$defs/Empowered",
         "fell": "#/$defs/Fell",
         "gameOver": "#/$defs/GameOver",
         "knockedBack": "#/$defs/KnockedBack",
         "manaChanged": "#/$defs/ManaChanged",
+        "mapEvent": "#/$defs/MapEvent",
         "moved": "#/$defs/Moved",
         "pieceFinished": "#/$defs/PieceFinished",
         "playerFinished": "#/$defs/PlayerFinished",
@@ -302,6 +343,12 @@
        },
        {
         "$ref": "#/$defs/StatusChanged"
+       },
+       {
+        "$ref": "#/$defs/Empowered"
+       },
+       {
+        "$ref": "#/$defs/MapEvent"
        },
        {
         "$ref": "#/$defs/PieceFinished"
@@ -412,7 +459,7 @@
   "HelloMessage": {
    "properties": {
     "protocol": {
-     "default": 1,
+     "default": 2,
      "type": "integer"
     },
     "room": {
@@ -442,7 +489,15 @@
      "type": "string"
     },
     "byColor": {
-     "$ref": "#/$defs/Color"
+     "anyOf": [
+      {
+       "$ref": "#/$defs/Color"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
     },
     "color": {
      "$ref": "#/$defs/Color"
@@ -450,9 +505,11 @@
     "from": {
      "type": "integer"
     },
-    "lane": {
-     "default": 0,
-     "type": "integer"
+    "path": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "piece": {
      "type": "integer"
@@ -471,7 +528,7 @@
     "byColor",
     "color",
     "from",
-    "lane",
+    "path",
     "piece",
     "to",
     "type"
@@ -500,7 +557,8 @@
       "cast",
       "passive",
       "burned",
-      "practice"
+      "practice",
+      "spring"
      ],
      "type": "string"
     },
@@ -520,6 +578,61 @@
    "title": "ManaChanged",
    "type": "object"
   },
+  "MapEvent": {
+   "description": "A timed map event: announced (warning), happening (strike) or a conveyor flip.",
+   "properties": {
+    "event": {
+     "enum": [
+      "eruption",
+      "avalanche",
+      "thaw",
+      "freeze",
+      "conveyor"
+     ],
+     "type": "string"
+    },
+    "stage": {
+     "enum": [
+      "warning",
+      "strike",
+      "flip"
+     ],
+     "type": "string"
+    },
+    "tiles": {
+     "default": [],
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
+    "type": {
+     "const": "mapEvent",
+     "default": "mapEvent",
+     "type": "string"
+    },
+    "value": {
+     "anyOf": [
+      {
+       "type": "integer"
+      },
+      {
+       "type": "null"
+      }
+     ],
+     "default": null
+    }
+   },
+   "required": [
+    "event",
+    "stage",
+    "tiles",
+    "type",
+    "value"
+   ],
+   "title": "MapEvent",
+   "type": "object"
+  },
   "MatchView": {
    "properties": {
     "castTargets": {
@@ -534,6 +647,9 @@
     },
     "castUsed": {
      "type": "boolean"
+    },
+    "conveyor": {
+     "type": "integer"
     },
     "current": {
      "$ref": "#/$defs/Color"
@@ -567,6 +683,7 @@
      "enum": [
       "roll",
       "move",
+      "act",
       "over"
      ],
      "type": "string"
@@ -576,6 +693,9 @@
       "$ref": "#/$defs/Color"
      },
      "type": "array"
+    },
+    "round": {
+     "type": "integer"
     },
     "teams": {
      "additionalProperties": {
@@ -616,6 +736,7 @@
    "required": [
     "castTargets",
     "castUsed",
+    "conveyor",
     "current",
     "lastRoll",
     "legalPieces",
@@ -623,6 +744,7 @@
     "moveOptions",
     "phase",
     "ranking",
+    "round",
     "teams",
     "tiles",
     "turn",
@@ -637,7 +759,7 @@
     "lane": {
      "anyOf": [
       {
-       "maximum": 1,
+       "maximum": 3,
        "minimum": 0,
        "type": "integer"
       },
@@ -677,8 +799,27 @@
       }
      ]
     },
+    "path": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
+    },
     "piece": {
      "type": "integer"
+    },
+    "route": {
+     "anyOf": [
+      {
+       "$ref": "#/$defs/RouteView"
+      },
+      {
+       "type": "null"
+      }
+     ]
+    },
+    "tile": {
+     "type": "string"
     },
     "to": {
      "type": "integer"
@@ -686,7 +827,10 @@
    },
    "required": [
     "lane",
+    "path",
     "piece",
+    "route",
+    "tile",
     "to"
    ],
    "title": "MoveOptionView",
@@ -700,13 +844,9 @@
     "from": {
      "type": "integer"
     },
-    "lane": {
-     "default": 0,
-     "type": "integer"
-    },
     "path": {
      "items": {
-      "type": "integer"
+      "type": "string"
      },
      "type": "array"
     },
@@ -734,7 +874,6 @@
    "required": [
     "color",
     "from",
-    "lane",
     "path",
     "piece",
     "to",
@@ -859,9 +998,11 @@
     "from": {
      "type": "integer"
     },
-    "lane": {
-     "default": 0,
-     "type": "integer"
+    "path": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "piece": {
      "type": "integer"
@@ -878,7 +1019,7 @@
    "required": [
     "color",
     "from",
-    "lane",
+    "path",
     "piece",
     "to",
     "type"
@@ -1035,6 +1176,35 @@
    "title": "RoomView",
    "type": "object"
   },
+  "RouteView": {
+   "description": "The branch a move enters (route preview at a fork).",
+   "properties": {
+    "length": {
+     "type": "integer"
+    },
+    "name": {
+     "type": "string"
+    },
+    "region": {
+     "type": "string"
+    },
+    "shortest": {
+     "type": "integer"
+    },
+    "tag": {
+     "type": "string"
+    }
+   },
+   "required": [
+    "length",
+    "name",
+    "region",
+    "shortest",
+    "tag"
+   ],
+   "title": "RouteView",
+   "type": "object"
+  },
   "Slid": {
    "properties": {
     "color": {
@@ -1043,9 +1213,11 @@
     "from": {
      "type": "integer"
     },
-    "lane": {
-     "default": 0,
-     "type": "integer"
+    "path": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "piece": {
      "type": "integer"
@@ -1062,7 +1234,7 @@
    "required": [
     "color",
     "from",
-    "lane",
+    "path",
     "piece",
     "to",
     "type"
@@ -1128,23 +1300,23 @@
     "color": {
      "$ref": "#/$defs/Color"
     },
-    "lane": {
-     "type": "integer"
-    },
     "otherColor": {
      "$ref": "#/$defs/Color"
     },
-    "otherLane": {
-     "type": "integer"
-    },
     "otherPiece": {
      "type": "integer"
+    },
+    "otherTile": {
+     "type": "string"
     },
     "otherTo": {
      "type": "integer"
     },
     "piece": {
      "type": "integer"
+    },
+    "tile": {
+     "type": "string"
     },
     "to": {
      "type": "integer"
@@ -1157,12 +1329,12 @@
    },
    "required": [
     "color",
-    "lane",
     "otherColor",
-    "otherLane",
     "otherPiece",
+    "otherTile",
     "otherTo",
     "piece",
+    "tile",
     "to",
     "type"
    ],
@@ -1171,17 +1343,20 @@
   },
   "TeamView": {
    "properties": {
+    "empowered": {
+     "type": "boolean"
+    },
     "finish": {
      "type": "integer"
     },
-    "hero": {
-     "type": "string"
-    },
-    "lanes": {
+    "finished": {
      "items": {
-      "type": "integer"
+      "type": "boolean"
      },
      "type": "array"
+    },
+    "hero": {
+     "type": "string"
     },
     "mana": {
      "type": "integer"
@@ -1190,6 +1365,12 @@
      "type": "integer"
     },
     "pieces": {
+     "items": {
+      "type": "integer"
+     },
+     "type": "array"
+    },
+    "remaining": {
      "items": {
       "type": "integer"
      },
@@ -1204,18 +1385,34 @@
      },
      "type": "array"
     },
+    "tiles": {
+     "items": {
+      "anyOf": [
+       {
+        "type": "string"
+       },
+       {
+        "type": "null"
+       }
+      ]
+     },
+     "type": "array"
+    },
     "ultUsed": {
      "type": "boolean"
     }
    },
    "required": [
+    "empowered",
     "finish",
+    "finished",
     "hero",
-    "lanes",
     "mana",
     "maxMana",
     "pieces",
+    "remaining",
     "statuses",
+    "tiles",
     "ultUsed"
    ],
    "title": "TeamView",
@@ -1229,9 +1426,11 @@
     "from": {
      "type": "integer"
     },
-    "lane": {
-     "default": 0,
-     "type": "integer"
+    "path": {
+     "items": {
+      "type": "string"
+     },
+     "type": "array"
     },
     "piece": {
      "type": "integer"
@@ -1248,7 +1447,7 @@
    "required": [
     "color",
     "from",
-    "lane",
+    "path",
     "piece",
     "to",
     "type"
@@ -1262,6 +1461,7 @@
     "effect": {
      "enum": [
       "broken",
+      "cracked",
       "crater",
       "fire",
       "trap",
@@ -1315,9 +1515,12 @@
     "effect": {
      "enum": [
       "broken",
+      "cracked",
       "crater",
       "fire",
-      "trap"
+      "trap",
+      "warning",
+      "water"
      ],
      "type": "string"
     },
@@ -1399,12 +1602,13 @@
    "type": "object"
   }
  },
- "description": "Ludo Brawl wire protocol v1. Generated - do not edit.",
+ "description": "Ludo Brawl wire protocol v2. Generated - do not edit.",
  "properties": {
   "client": {
    "discriminator": {
     "mapping": {
      "cast": "#/$defs/CastCommand",
+     "endTurn": "#/$defs/EndTurnCommand",
      "move": "#/$defs/MoveCommand",
      "ping": "#/$defs/PingCommand",
      "practice": "#/$defs/PracticeCommand",
@@ -1422,6 +1626,9 @@
     },
     {
      "$ref": "#/$defs/CastCommand"
+    },
+    {
+     "$ref": "#/$defs/EndTurnCommand"
     },
     {
      "$ref": "#/$defs/PracticeCommand"
@@ -1442,10 +1649,12 @@
      "blocked": "#/$defs/Blocked",
      "captured": "#/$defs/Captured",
      "drifted": "#/$defs/Drifted",
+     "empowered": "#/$defs/Empowered",
      "fell": "#/$defs/Fell",
      "gameOver": "#/$defs/GameOver",
      "knockedBack": "#/$defs/KnockedBack",
      "manaChanged": "#/$defs/ManaChanged",
+     "mapEvent": "#/$defs/MapEvent",
      "moved": "#/$defs/Moved",
      "pieceFinished": "#/$defs/PieceFinished",
      "playerFinished": "#/$defs/PlayerFinished",
@@ -1512,6 +1721,12 @@
     },
     {
      "$ref": "#/$defs/StatusChanged"
+    },
+    {
+     "$ref": "#/$defs/Empowered"
+    },
+    {
+     "$ref": "#/$defs/MapEvent"
     },
     {
      "$ref": "#/$defs/PieceFinished"

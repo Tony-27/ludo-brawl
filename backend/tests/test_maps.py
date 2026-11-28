@@ -8,26 +8,24 @@ def test_maps_are_listed():
     assert {"classic_arena", "emerald_wilds"} <= ids
 
 
-@pytest.mark.parametrize("map_id", ["classic_arena", "emerald_wilds", "molten_forge"])
+@pytest.mark.parametrize("map_id", ["classic_arena", "emerald_wilds", "molten_forge", "frost_glacier"])
 def test_routes_are_consistent(map_id):
     board = load_board(map_id)
     assert len(board.teams) == 4
     starts = set()
     for color in board.teams:
-        route = board.routes[color]
-        start = board.nodes[route[0][0]]
-        assert start.kind == "start"
-        starts.add(start.id)
-        assert board.nodes[route[-1][0]].kind == "goal"
-        # Walks the whole loop except the tile before its own start.
-        on_loop = [step for step in route if board.nodes[step[0]].loop_index is not None]
-        assert len(on_loop) == board.loop_length - 1
-        flat = [nid for step in route for nid in step]
-        assert len(set(flat)) == len(flat)
-        # Home path is private to the team.
-        for nid in flat:
-            if board.nodes[nid].kind in ("home", "goal"):
-                assert all(board.locate(c, nid) is None for c in board.teams if c != color)
+        for branch in range(3 if board.regions else 1):
+            choices = {rid: branch for rid in board.regions}
+            path = board.path(color, choices)
+            start = board.nodes[path[0]]
+            assert start.kind == "start"
+            starts.add(start.id)
+            assert board.nodes[path[-1]].kind == "goal"
+            assert len(set(path)) == len(path)
+            # Home path is private to the team.
+            for nid in path:
+                if board.nodes[nid].kind in ("home", "goal"):
+                    assert all(board.locate(c, nid) is None for c in board.teams if c != color)
     assert len(starts) == 4
 
 
@@ -39,14 +37,21 @@ def test_emerald_wilds_is_bigger_and_has_features():
     assert wilds.data["rivers"] and wilds.data["zones"]
 
 
-def test_molten_forge_has_forks_and_every_hazard():
-    forge = load_board("molten_forge")
-    assert {"pit", "slide", "portal", "crumble", "forks"} <= set(forge.summary()["features"])
-    assert all(forge.pieces_per_team == 3 for _ in [0])
+def test_forge_and_glacier_offer_three_routes_of_different_lengths():
+    for map_id, features in (
+        ("molten_forge", {"crumble", "conveyor", "anvil", "portal", "eruption", "branches"}),
+        ("frost_glacier", {"ice", "thin_ice", "spring", "freeze", "avalanche", "branches"}),
+    ):
+        board = load_board(map_id)
+        assert features <= set(board.summary()["features"])
+        assert board.pieces_per_team == 3 and len(board.nodes) >= 120
+        for region in board.regions.values():
+            lengths = [len(b.nodes) for b in region.branches]
+            assert len(lengths) == 3 and len(set(lengths)) == 3
 
 
 def test_hazards_are_never_on_protected_tiles():
-    for board in (load_board("molten_forge"),):
+    for board in (load_board("molten_forge"), load_board("frost_glacier")):
         for node in board.nodes.values():
             if node.hazard:
                 assert node.kind not in ("start", "safe", "home", "goal")

@@ -20,6 +20,7 @@ class Settings(BaseSettings):
 
     bot_delay: float = 1.1
     turn_timeout: float = 30.0
+    act_timeout: float = 12.0
     room_ttl: float = 2 * 60 * 60
 
     cors_origins: list[str] = ["http://localhost:4200"]

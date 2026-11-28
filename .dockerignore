@@ -7,3 +7,8 @@ frontend/dist
 frontend/.angular
 **/*.db
 .git
+deploy
+docs
+.github
+.claude
+**/.env

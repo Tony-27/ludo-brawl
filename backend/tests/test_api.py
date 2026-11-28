@@ -120,7 +120,7 @@ def test_websocket_game_events_and_resync(client, service, clock):
 
     with client.websocket_connect(f"/api/rooms/{code}/ws?token={host['token']}") as ws:
         hello = ws.receive_json()
-        assert hello["type"] == "hello" and hello["you"] == host["id"] and hello["protocol"] == 1
+        assert hello["type"] == "hello" and hello["you"] == host["id"] and hello["protocol"] == 2
         ws.receive_json()  # presence snapshot
 
         ws.send_json({"type": "roll"})

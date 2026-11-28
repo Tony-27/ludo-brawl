@@ -81,17 +81,22 @@ def _enemy(match: Match, color: Color, target: dict, reach: int) -> tuple[Color,
 
 
 def _tiles_ahead(match: Match, color: Color, piece: int, reach: int) -> list[Node]:
-    team = match.teams[color]
-    p, lane = team.pieces[piece], team.lanes[piece]
+    p = match.teams[color].pieces[piece]
+    path = match.path_of(color, piece)  # regions not entered yet: their main branch
     tiles = []
     for k in range(1, reach + 1):
-        if p + k > match.board.finish(color):
+        if p + k >= len(path):
             break
-        node = match.board.node(color, p + k, match.board.lane_after(color, p, lane, p + k, None))
-        if node is None or node.loop_index is None:
+        node = match.board.nodes[path[p + k]]
+        if node.loop_index is None:
             break  # effects stop at the home path
         tiles.append(node)
     return tiles
+
+
+def _kb(match: Match, ability: Ability, color: Color) -> int:
+    """Knockback of an ability, plus the Forge Anvil bonus when empowered."""
+    return int(ability.params["knockback"]) + match.bonus(color)
 
 
 def _cast(match: Match, ability: Ability, color: Color, **kw) -> None:
@@ -109,14 +114,13 @@ def _root(match: Match, c: Color, i: int, turns: int) -> None:
 
 def _advance(match: Match, color: Color, piece: int, steps: int, via: str) -> None:
     """Move a piece forward outside a roll (dash, rally). Captures only for dashes."""
-    team = match.teams[color]
-    p, lane = team.pieces[piece], team.lanes[piece]
-    end = min(p + steps, match.board.finish(color))
-    new_lane = match.board.lane_after(color, p, lane, end, None)
-    match._place(color, piece, end, new_lane)
-    match._emit(
-        ev.Moved(color=color, piece=piece, start=p, end=end, lane=new_lane, path=list(range(p + 1, end + 1)), via=via)
-    )
+    p = match.teams[color].pieces[piece]
+    end, ch = match._ahead(color, piece, steps)
+    if end == p:
+        return
+    match._place(color, piece, end, ch)
+    tiles = match._tiles_between(color, piece, p, end)
+    match._emit(ev.Moved(color=color, piece=piece, start=p, end=end, path=tiles, via=via))
     match._land(color, piece, "dash" if via == "dash" else "rally")
     if not match.is_over:
         match._check_finish(color, piece)
@@ -128,7 +132,7 @@ def dash(match: Match, ability: Ability, color: Color, target: dict) -> Apply:
     steps = int(ability.params["steps"])
     if "rooted" in match.teams[color].statuses[piece]:
         raise RuleError("That piece is rooted.")
-    if match.teams[color].pieces[piece] + steps > match.board.finish(color):
+    if match._ahead(color, piece, steps)[0] != match.teams[color].pieces[piece] + steps:
         raise RuleError("That would overshoot the goal.")
 
     def apply() -> None:
@@ -143,6 +147,8 @@ def line(match: Match, ability: Ability, color: Color, target: dict) -> Apply:
     tiles = _tiles_ahead(match, color, piece, int(ability.params["reach"]))
     if not tiles:
         raise RuleError("Nothing ahead to hit.")
+    if not any(not match.board.is_immune(n) and match.pieces_on(n.id, exclude=color) for n in tiles):
+        raise RuleError(f"No enemy in the {len(tiles)} tiles ahead.")
 
     def apply() -> None:
         _cast(match, ability, color, piece=piece, tiles=[n.id for n in tiles])
@@ -150,7 +156,7 @@ def line(match: Match, ability: Ability, color: Color, target: dict) -> Apply:
             victims = [] if match.board.is_immune(node) else match.pieces_on(node.id, exclude=color)
             for vc, vi in victims:
                 if "knockback" in ability.params:
-                    match.knock_back(vc, vi, int(ability.params["knockback"]), color, ability.id)
+                    match.knock_back(vc, vi, _kb(match, ability, color), color, ability.id)
             if victims and ability.params.get("firstOnly"):
                 break
         burn = int(ability.params.get("burn", 0))
@@ -177,7 +183,7 @@ def radius(match: Match, ability: Ability, color: Color, target: dict) -> Apply:
             if "root" in ability.params:
                 _root(match, vc, vi, int(ability.params["root"]))
             if "knockback" in ability.params:
-                match.knock_back(vc, vi, int(ability.params["knockback"]), color, ability.id)
+                match.knock_back(vc, vi, _kb(match, ability, color), color, ability.id)
 
     return apply
 
@@ -190,7 +196,7 @@ def strike(match: Match, ability: Ability, color: Color, target: dict) -> Apply:
         if "root" in ability.params:
             _root(match, tc, tp, int(ability.params["root"]))
         if "knockback" in ability.params:
-            match.knock_back(tc, tp, int(ability.params["knockback"]), color, ability.id)
+            match.knock_back(tc, tp, _kb(match, ability, color), color, ability.id)
 
     return apply
 
@@ -200,17 +206,16 @@ def blink(match: Match, ability: Ability, color: Color, target: dict) -> Apply:
     steps = target.get("steps", ability.params["maxSteps"])
     if not isinstance(steps, int) or not 1 <= steps <= ability.params["maxSteps"]:
         raise RuleError(f"Blink 1 to {ability.params['maxSteps']} tiles.")
-    team = match.teams[color]
-    p, lane = team.pieces[piece], team.lanes[piece]
-    if p + steps > match.board.finish(color):
+    p = match.teams[color].pieces[piece]
+    end, ch = match._ahead(color, piece, steps)
+    if end != p + steps:
         raise RuleError("That would overshoot the goal.")
 
     def apply() -> None:
-        end = p + steps
-        new_lane = match.board.lane_after(color, p, lane, end, None)
-        _cast(match, ability, color, piece=piece, tiles=[match.board.node(color, end, new_lane).id])  # type: ignore[union-attr]
-        match._place(color, piece, end, new_lane)
-        match._emit(ev.Teleported(color=color, piece=piece, start=p, end=end, lane=new_lane))
+        dest = match.board.node(color, end, ch).id  # type: ignore[union-attr]
+        _cast(match, ability, color, piece=piece, tiles=[dest])
+        match._place(color, piece, end, ch)
+        match._emit(ev.Teleported(color=color, piece=piece, start=p, end=end, path=[dest]))
         match._land(color, piece, "teleport")
         if not match.is_over:
             match._check_finish(color, piece)
@@ -248,7 +253,7 @@ def meteor(match: Match, ability: Ability, color: Color, target: dict) -> Apply:
             for vc, vi in match.pieces_on(n.id, exclude=color):
                 if match.is_over:
                     return
-                match.knock_back(vc, vi, int(ability.params["knockback"]), color, ability.id)
+                match.knock_back(vc, vi, _kb(match, ability, color), color, ability.id)
         turns = int(ability.params["turns"])
         match.tile_fx[node.id] = TileEffect("crater", turns, color)
         match._emit(ev.TileChanged(tile=node.id, effect="crater", turns=turns, owner=color))
@@ -314,8 +319,8 @@ def swap(match: Match, ability: Ability, color: Color, target: dict) -> Apply:
     if not candidates:
         raise RuleError("You need a piece on an open trail tile to swap with.")
     _, mine_i, mine = min(candidates, key=lambda c: c[0])
-    my_new = match.board.locate(color, their.id)
-    their_new = match.board.locate(tc, mine.id)
+    my_new = match.board.locate(color, their.id, match.teams[color].choices[mine_i])
+    their_new = match.board.locate(tc, mine.id, match.teams[tc].choices[tp])
     if my_new is None or their_new is None:
         raise RuleError("Those two can't swap places.")
 
@@ -328,11 +333,11 @@ def swap(match: Match, ability: Ability, color: Color, target: dict) -> Apply:
                 color=color,
                 piece=mine_i,
                 to=my_new[0],
-                lane=my_new[1],
+                tile=their.id,
                 otherColor=tc,
                 otherPiece=tp,
                 otherTo=their_new[0],
-                otherLane=their_new[1],
+                otherTile=mine.id,
             )
         )
         match._land(tc, tp, "swap")
@@ -375,6 +380,37 @@ def candidates(match: Match, ability: Ability, color: Color) -> list[dict]:
     if t == "tile":
         return [{"node": nid} for nid, node in match.board.nodes.items() if node.loop_index is not None]
     return [{}]
+
+
+def preview(match: Match, ability: Ability, color: Color, target: dict) -> list[str] | None:
+    """Tiles an ability would affect for a target (shown while aiming)."""
+    try:
+        if ability.effect == "line":
+            return [n.id for n in _tiles_ahead(match, color, int(target["piece"]), int(ability.params["reach"]))]
+        if ability.effect in ("dash", "blink"):
+            piece = int(target["piece"])
+            steps = int(target.get("steps", ability.params.get("steps", ability.params.get("maxSteps", 1))))
+            end, ch = match._ahead(color, piece, steps)
+            node = match.board.node(color, end, ch)
+            return [node.id] if node else None
+        if ability.effect == "meteor":
+            centre = match.board.nodes[str(target["node"])]
+            splash = int(ability.params.get("splash", 0))
+            return [
+                n.id
+                for n in match.board.nodes.values()
+                if (d := match.board.loop_distance(n, centre)) is not None and d <= splash
+            ]
+        if ability.effect in ("strike", "swap"):
+            node = match.node_of(Color(target["color"]), int(target["piece"]))
+            return [node.id] if node else None
+        if ability.effect == "radius":
+            reach = int(ability.params["radius"])
+            ahead = bool(ability.params.get("aheadOnly"))
+            return [n.id for _, _, n in _enemies_in_reach(match, color, reach, ahead)]
+    except (KeyError, ValueError, TypeError):
+        return None
+    return None
 
 
 def _check() -> None:

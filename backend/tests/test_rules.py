@@ -25,30 +25,47 @@ def types(events):
 def loop_progress(color, loop_index, board=CLASSIC):
     """Progress value for `color` that stands on shared loop tile `loop_index`."""
     nid = board.data["loop"][loop_index]
-    return board.locate(color, nid if isinstance(nid, str) else nid[0])[0]
+    return board.locate(color, nid)[0]
 
 
-def mini_board(hazards=None, forks=(), n=12, pieces=3):
-    """A tiny 2-team board: loop of n tiles, red starts at 0, yellow at n/2, 2 home tiles each."""
+def mini_board(hazards=None, region=None, n=12, pieces=3, events=()):
+    """A tiny 2-team board: loop of n tiles, red starts at 0, yellow at n/2, 2 home tiles each.
+
+    `region=(at, span, lengths)` turns spine tiles at..at+span-1 into a region whose
+    branch 0 is those tiles and branch k is `lengths[k-1]` new tiles named bK_0, bK_1...
+    """
     hazards = hazards or {}
-    nodes, loop = [], []
-    for i in range(n):
-        kind = "start" if i in (0, n // 2) else "normal"
-        node = {"id": f"t{i}", "kind": kind, "pos": [i, 0, 0]}
-        if f"t{i}" in hazards:
-            node["hazard"] = hazards[f"t{i}"]
+    nodes, loop, regions = [], [], {}
+
+    def add(nid, kind="normal"):
+        node = {"id": nid, "kind": kind, "pos": [0, 0, 0]}
+        if nid in hazards:
+            node["hazard"] = hazards[nid]
         nodes.append(node)
-        if i in forks:
-            alt = {"id": f"a{i}", "kind": "normal", "pos": [i, 0, 1], "lane": 1}
-            if f"a{i}" in hazards:
-                alt["hazard"] = hazards[f"a{i}"]
-            nodes.append(alt)
-            loop.append([f"t{i}", f"a{i}"])
-        else:
-            loop.append(f"t{i}")
+
+    i = 0
+    while i < n:
+        if region and i == region[0]:
+            at, span, lengths = region
+            branches = [{"name": "Main", "nodes": [f"t{k}" for k in range(at, at + span)]}]
+            for k in branches[0]["nodes"]:
+                add(k)
+            for b, length in enumerate(lengths, start=1):
+                ids = [f"b{b}_{k}" for k in range(length)]
+                for nid in ids:
+                    add(nid)
+                branches.append({"name": f"Alt {b}", "tag": "", "nodes": ids})
+            regions["r"] = {"name": "Pass", "branches": branches}
+            loop.append({"region": "r"})
+            i += span
+            continue
+        add(f"t{i}", "start" if i in (0, n // 2) else "normal")
+        loop.append(f"t{i}")
+        i += 1
     routes = {}
     for color, s in (("red", 0), ("yellow", n // 2)):
-        path = [loop[(s + k) % n] for k in range(n - 1)]
+        first = loop.index(f"t{s}")
+        path = [loop[(first + k) % len(loop)] for k in range(len(loop) - 1)]
         for k in range(2):
             nodes.append({"id": f"h_{color}_{k}", "kind": "home", "pos": [0, 0, 0]})
             path.append(f"h_{color}_{k}")
@@ -56,7 +73,16 @@ def mini_board(hazards=None, forks=(), n=12, pieces=3):
         path.append(f"goal_{color}")
         routes[color] = path
     return Board(
-        {"id": "mini", "name": "Mini", "piecesPerTeam": pieces, "nodes": nodes, "loop": loop, "routes": routes}
+        {
+            "id": "mini",
+            "name": "Mini",
+            "piecesPerTeam": pieces,
+            "nodes": nodes,
+            "loop": loop,
+            "regions": regions,
+            "routes": routes,
+            "events": list(events),
+        }
     )
 
 
@@ -154,7 +180,7 @@ def test_cast_targets_lists_only_valid_options():
     m.teams[R].pieces = [10, CAMP, CAMP]
     m.teams[Y].pieces = [loop_progress(Y, 30), loop_progress(Y, 15), CAMP]
     targets = m.cast_targets()
-    assert targets["zap"] == [{"color": "yellow", "piece": 1}]
+    assert [{k: v for k, v in t.items() if k != "preview"} for t in targets["zap"]] == [{"color": "yellow", "piece": 1}]
     assert {t["piece"] for t in targets["blink"]} == {0}
 
 
@@ -229,7 +255,7 @@ def test_meteor_knocks_back_splash_and_leaves_a_crater():
     assert m.tile_fx["t15"].kind == "crater"
     # Landing in the crater is a fall.
     m.teams[R].pieces[1] = 12
-    m._place(R, 1, 15, 0)
+    m._place(R, 1, 15, {})
     m._arrive(R, 1, "move", 0)
     assert m.teams[R].pieces[1] == CAMP
 
@@ -240,7 +266,7 @@ def test_snare_trap_roots_and_knocks_back_the_next_enemy():
     m.teams[R].pieces = [10, CAMP, CAMP]
     m.cast("snare_trap", {"node": "t14"})
     yp = loop_progress(Y, 14)
-    m._place(Y, 0, yp, 0)
+    m._place(Y, 0, yp, {})
     m._arrive(Y, 0, "move", 0)
     assert "rooted" in m.teams[Y].statuses[0] and m.teams[Y].pieces[0] == yp - 2 and "t14" not in m.tile_fx
 
@@ -266,10 +292,11 @@ def test_fire_breath_burns_tiles_and_drains_mana():
     m = match({R: "dragon_rider", Y: "samurai"})
     m.teams[R].mana = 6
     m.teams[R].pieces = [10, CAMP, CAMP]
+    m.teams[Y].pieces[1] = loop_progress(Y, 12)
     m.cast("fire_breath", {"piece": 0})
     assert {k for k, v in m.tile_fx.items() if v.kind == "fire"} == {"t11", "t12"}  # t13 is a safe start tile
     m.teams[Y].mana = 3
-    m._place(Y, 0, loop_progress(Y, 11), 0)
+    m._place(Y, 0, loop_progress(Y, 11), {})
     m._arrive(Y, 0, "move", 0)
     assert m.teams[Y].mana == 2
 
@@ -291,7 +318,8 @@ def test_slides_and_portals_chain_forward():
     board = mini_board({"t2": {"type": "slide", "steps": 3}, "t5": {"type": "portal", "to": "t8"}})
     m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
     m.teams[R].pieces = [1, CAMP, CAMP]
-    evs = m.roll(1)
+    m.roll(1, auto_move=False)
+    evs = m.move(0)
     assert types(evs)[-3:-1] == ["slid", "portaled"] or ("slid" in types(evs) and "portaled" in types(evs))
     assert m.teams[R].pieces[0] == 8
 
@@ -307,10 +335,10 @@ def test_portal_never_sends_you_backwards():
 def test_crumbling_bridge_collapses_then_rebuilds():
     board = mini_board({"t3": {"type": "crumble", "uses": 2}})
     m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
-    m._place(R, 0, 3, 0)
+    m._place(R, 0, 3, {})
     m._arrive(R, 0, "move", 0)
     assert m.teams[R].pieces[0] == 3
-    m._place(R, 1, 3, 0)
+    m._place(R, 1, 3, {})
     m._arrive(R, 1, "move", 0)
     assert m.teams[R].pieces[1] == CAMP and "t3" in m.broken
     for _ in range(m.config.bridge_rebuild_turns):
@@ -321,36 +349,227 @@ def test_crumbling_bridge_collapses_then_rebuilds():
 def test_currents_drift_pieces_at_turn_start():
     board = mini_board({"t2": {"type": "current", "steps": 2}})
     m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
-    m._place(R, 0, 2, 0)
+    m._place(R, 0, 2, {})
     m.current = Y
     m._end_turn()  # back to red: the current carries the piece
     assert m.teams[R].pieces[0] == 4
 
 
-def test_fork_requires_a_lane_choice_and_keeps_it():
-    board = mini_board({"a4": {"type": "pit"}}, forks=(3, 4, 5))
+def test_branches_of_different_lengths():
+    # Region at t3..t5 (3 tiles); a 1-tile shortcut and a 5-tile detour with a pit.
+    board = mini_board({"b2_2": {"type": "pit"}}, region=(3, 3, [1, 5]))
+    assert [board.finish(R, {"r": b}) for b in range(3)] == [13, 11, 15]
     m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
+    m.take_events()
     m.teams[R].pieces = [1, 8, CAMP]
     m.roll(2, auto_move=False)
     opts = {(o.piece, o.lane) for o in m.move_options()}
-    assert (0, 0) in opts and (0, 1) in opts
-    m.move(0, lane=1)
-    assert m.teams[R].lanes[0] == 1 and m.node_of(R, 0).id == "a3"
-    # Moving on inside the fork stays in the chosen lane (and the risky lane has a pit).
+    assert {(0, 0), (0, 1), (0, 2)} <= opts
+    snap = m.snapshot()
+    routes = {o["lane"]: o["route"] for o in snap["moveOptions"] if o["piece"] == 0}
+    assert routes[1]["length"] == 1 and routes[2]["length"] == 5 and routes[0]["name"] == "Main"
+    m.move(0, lane=2)
+    assert m.teams[R].choices[0] == {"r": 2} and m.node_of(R, 0).id == "b2_0"
+    assert m.finish_of(R, 0) == 15
+    # Moving on stays on the chosen branch: no new choice, and the detour has a pit.
     m.current, m.phase = R, Phase.ROLL
-    m.roll(1, auto_move=False)
+    m.roll(2, auto_move=False)
     assert not any(o.lane is not None for o in m.move_options() if o.piece == 0)
     m.move(0)
-    assert m.teams[R].pieces[0] == CAMP
+    assert m.teams[R].pieces[0] == CAMP and m.teams[R].choices[0] == {}
+
+
+def test_shortcut_skips_ahead_and_knockback_keeps_the_branch():
+    board = mini_board(region=(3, 3, [1]), n=14)
+    m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
+    m.take_events()
+    m.teams[R].pieces = [2, CAMP, CAMP]
+    m.roll(2, auto_move=False)
+    m.move(0, lane=1)  # b1_0 then t6
+    assert m.node_of(R, 0).id == "t6"
+    m.knock_back(R, 0, 1, Y, "test")
+    assert m.node_of(R, 0).id == "b1_0"
+    m.knock_back(R, 0, 1, Y, "test")
+    assert m.node_of(R, 0).id == "t2" and m.teams[R].choices[0] == {}
+
+
+def test_move_events_list_the_tiles_walked():
+    board = mini_board(region=(3, 3, [1]))
+    m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
+    m.take_events()
+    m.teams[R].pieces = [1, CAMP, CAMP]
+    m.roll(3, auto_move=False)
+    evs = m.move(0, lane=1)
+    moved = next(e for e in evs if e.type == "moved")
+    assert moved.path == ["t2", "b1_0", "t6"]
+
+
+# ---------------------------------------------------------------- turn flow
+def test_after_moving_you_may_still_cast_or_end_the_turn():
+    m = match()
+    m.teams[R].mana = 6
+    m.teams[R].pieces = [10, 20, CAMP]
+    m.teams[Y].pieces[0] = loop_progress(Y, 15)
+    m.roll(1, auto_move=False)
+    m.move(1)
+    assert m.phase == Phase.ACT and m.current == R
+    with pytest.raises(RuleError, match="No enemy"):
+        m.cast("katana_slash", {"piece": 0})  # nobody on 11/12
+    m.cast("quick_draw", {"piece": 0})
+    assert m.current == Y
+
+
+def test_act_phase_cast_ends_the_turn():
+    m = match()
+    m.teams[R].mana = 6
+    m.teams[R].pieces = [9, 20, CAMP]
+    m.teams[Y].pieces[0] = loop_progress(Y, 11)
+    m.roll(1, auto_move=False)
+    m.move(1)
+    assert m.phase == Phase.ACT
+    m.cast("katana_slash", {"piece": 0})
+    assert m.current == Y and m.phase == Phase.ROLL
+
+
+def test_end_turn_only_in_act_phase():
+    m = match()
+    with pytest.raises(RuleError):
+        m.end_turn()
+    m.teams[R].mana = 6
+    m.teams[R].pieces = [9, 20, CAMP]
+    m.teams[Y].pieces[0] = loop_progress(Y, 11)
+    m.roll(1, auto_move=False)
+    m.move(1)
+    m.end_turn()
+    assert m.current == Y
+
+
+def test_no_act_phase_without_castable_spells():
+    m = match()
+    m.teams[R].pieces = [9, 20, CAMP]
+    m.roll(2, auto_move=False)
+    m.move(1)
+    assert m.current == Y
+
+
+def test_no_auto_move_while_a_spell_could_be_cast():
+    m = match()
+    m.teams[R].mana = 6
+    m.teams[R].pieces = [9, CAMP, CAMP]
+    m.teams[Y].pieces[0] = loop_progress(Y, 12)
+    m.roll(2)
+    assert m.phase == Phase.MOVE and m.teams[R].pieces[0] == 9
+    m.teams[R].mana = 0
+    m.phase, m.cast_this_turn = Phase.ROLL, False
+    m.roll(2)
+    assert m.teams[R].pieces[0] == 11
+
+
+def test_line_spells_need_an_enemy_in_reach():
+    m = match()
+    m.teams[R].mana = 6
+    m.teams[R].pieces = [9, CAMP, CAMP]
+    with pytest.raises(RuleError, match="No enemy"):
+        m.cast("katana_slash", {"piece": 0})
+    assert "katana_slash" not in m.cast_targets()
+    m.teams[Y].pieces[0] = loop_progress(Y, 11)
+    target = m.cast_targets()["katana_slash"][0]
+    assert target["piece"] == 0 and target["preview"] == ["t10", "t11"]
+
+
+# ---------------------------------------------------------------- map events and tiles
+def test_eruption_is_announced_then_sends_pieces_home():
+    board = mini_board(events=[{"type": "eruption", "every": 3, "offset": 0, "tiles": ["t3"]}])
+    m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
+    m.take_events()
+    m.teams[R].pieces = [1, CAMP, CAMP]
+    m.teams[Y].pieces = [board.locate(Y, "t4")[0], CAMP, CAMP]
+    for _ in range(2):  # finish round 1 (red, yellow)
+        m._end_turn()
+    assert m.round == 2 and m.warnings == {"t3": "eruption"}
+    m._place(Y, 0, board.locate(Y, "t3")[0], {})
+    m._end_turn()
+    m._end_turn()  # round 3 starts: eruption
+    assert m.round == 3 and m.teams[Y].pieces[0] == CAMP and not m.warnings
+
+
+def test_frozen_lake_closes_when_it_thaws():
+    board = mini_board(
+        {"b1_0": {"type": "thin_ice", "uses": 2}},
+        region=(3, 3, [1]),
+        events=[{"type": "freeze", "region": "r", "branch": 1, "cycle": [1, 1], "tiles": ["b1_0"]}],
+    )
+    m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
+    m.take_events()
+    m.teams[R].pieces = [2, CAMP, CAMP]
+    m._place(R, 1, 3, {"r": 1})
+    assert m.node_of(R, 1).id == "b1_0"
+    m._end_turn()
+    m._end_turn()  # round 2: thawed
+    assert ("r", 1) in m.closed and m.teams[R].pieces[1] == CAMP
+    m.current, m.phase = R, Phase.ROLL
+    m.roll(2, auto_move=False)
+    assert {o.lane for o in m.move_options() if o.piece == 0} == {0}
+
+
+def test_conveyor_flips_direction_each_round():
+    board = mini_board(
+        {"t4": {"type": "conveyor", "steps": 2}}, events=[{"type": "conveyor", "every": 1, "tiles": ["t4"]}]
+    )
+    m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
+    m.teams[R].pieces = [3, CAMP, CAMP]
+    m.roll(1, auto_move=False)
+    m.move(0)
+    assert m.teams[R].pieces[0] == 6
+    m.current = Y
+    m._end_turn()  # round 2: backwards
+    assert m.conveyor == -1
+    m._place(R, 1, 3, {})
+    m._place(R, 1, 4, {})
+    m._arrive(R, 1, "move", 0)
+    assert m.teams[R].pieces[1] == 2
+
+
+def test_ice_slides_you_to_solid_ground_and_thin_ice_breaks():
+    board = mini_board({"t3": {"type": "ice"}, "t4": {"type": "ice"}, "t8": {"type": "thin_ice", "uses": 2}})
+    m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
+    m.teams[R].pieces = [2, CAMP, CAMP]
+    m.roll(1, auto_move=False)
+    m.move(0)
+    assert m.teams[R].pieces[0] == 5
+    m._place(R, 1, 8, {})
+    m._arrive(R, 1, "move", 0)
+    assert m.crumble["t8"] == 1 and m.snapshot()["tiles"]["t8"]["effect"] == "cracked"
+    m._place(R, 2, 8, {})
+    m._arrive(R, 2, "move", 0)
+    assert m.teams[R].pieces[2] == CAMP and "t8" in m.broken
+
+
+def test_hot_spring_heals_roots_and_anvil_empowers_the_next_spell():
+    board = mini_board({"t3": {"type": "spring"}, "t5": {"type": "anvil"}})
+    m = Match(board, {R: "samurai", Y: "samurai"}, rng=random.Random(1))
+    m.teams[R].statuses[0]["rooted"] = 2
+    mana = m.teams[R].mana
+    m._place(R, 0, 3, {})
+    m._arrive(R, 0, "move", 0)
+    assert "rooted" not in m.teams[R].statuses[0] and m.teams[R].mana == mana + 1
+    m._place(R, 0, 5, {})
+    m._arrive(R, 0, "move", 0)
+    assert m.teams[R].empowered
+    m.teams[R].mana = 6
+    m._place(Y, 0, board.locate(Y, "t7")[0], {})
+    start = m.teams[Y].pieces[0]
+    kb = next(e for e in m.cast("katana_slash", {"piece": 0}) if e.type == "knockedBack")
+    assert kb.start - kb.end == min(start, 4 + m.config.empower_bonus) and not m.teams[R].empowered
 
 
 def test_events_serialise_with_aliases():
     data = dump(match().roll(6))
     moved = next(e for e in data if e["type"] == "moved")
-    assert moved["from"] == CAMP and moved["to"] == 0 and moved["lane"] == 0
+    assert moved["from"] == CAMP and moved["to"] == 0 and moved["path"] == ["t0"]
 
 
-@pytest.mark.parametrize("map_id", ["classic_arena", "emerald_wilds", "molten_forge"])
+@pytest.mark.parametrize("map_id", ["classic_arena", "emerald_wilds", "molten_forge", "frost_glacier"])
 def test_bot_games_always_finish_with_every_hero(map_id):
     board = load_board(map_id)
     heroes = list(HEROES)
@@ -364,6 +583,8 @@ def test_bot_games_always_finish_with_every_hero(map_id):
                 m.cast(a.ability, a.target)
             elif a.kind == "roll":
                 m.roll(rng.randint(1, 6))
+            elif a.kind == "end":
+                m.end_turn()
             else:
                 m.move(a.piece, a.lane)
             m.snapshot()

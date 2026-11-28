@@ -1,0 +1,83 @@
+# Production stack: Caddy (automatic HTTPS + WebSockets) -> game server -> Postgres,
+# plus nightly database backups. See docs/DEPLOY.md.
+#
+#   cp .env.example .env   # then fill it in
+#   ./deploy.sh
+#
+# Rooms and live games are kept in the server's memory, so run ONE app container.
+# (Scaling out later needs a shared room store such as Redis.)
+name: ludo-brawl
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data # certificates: keep this volume!
+      - caddy_config:/config
+    depends_on:
+      app: { condition: service_healthy }
+
+  app:
+    image: ${IMAGE:-ghcr.io/tony-27/ludo-brawl}:${TAG:-latest}
+    restart: unless-stopped
+    environment:
+      LUDO_DATABASE_URL: postgresql+asyncpg://ludo:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}@db:5432/ludo
+      LUDO_CORS_ORIGINS: '["https://${DOMAIN}"]'
+      LUDO_TURN_TIMEOUT: ${LUDO_TURN_TIMEOUT:-30}
+      LUDO_BOT_DELAY: ${LUDO_BOT_DELAY:-1.1}
+    expose: ["8000"]
+    depends_on:
+      db: { condition: service_healthy }
+    logging: &logging
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
+
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ludo
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ludo
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ludo"]
+      interval: 5s
+      retries: 20
+    logging: *logging
+
+  # Nightly pg_dump into ./backups (kept for BACKUP_KEEP_DAYS days).
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ./backups:/backups
+    depends_on:
+      db: { condition: service_healthy }
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          f=/backups/ludo-$$(date +%Y%m%d-%H%M%S).sql.gz
+          if pg_dump -h db -U ludo ludo | gzip > "$$f"; then echo "backup ok: $$f"; else echo "backup FAILED"; rm -f "$$f"; fi
+          find /backups -name 'ludo-*.sql.gz' -mtime +$$KEEP_DAYS -delete
+          sleep 86400
+        done
+    logging: *logging
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

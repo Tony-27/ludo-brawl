@@ -229,62 +229,81 @@ def emerald_wilds() -> dict:
     }
 
 
-# --------------------------------------------------------------------- forge
-def molten_forge() -> dict:
-    """Volcanic fortress: forks with a safe and a risky lane, crumbling bridges
-    over lava, portals and conveyor slides."""
-    n = 60
+# --------------------------------------------------------------------- ring maps with route choices
+def ring_map(
+    *,
+    n: int,
+    radius,
+    region_at: int,
+    span: int,
+    branches: list[dict],
+    main_tile,
+    region_name: str,
+) -> dict:
+    """A loop of `n` spine tiles split in four quarters. In every quarter the
+    spine tiles `region_at .. region_at+span-1` form a region whose branch 0
+    lies on the spine; the other branches curve inwards / outwards with their
+    own length. `main_tile(q, owner)` decorates spine tiles outside regions,
+    each branch's `tile(k, m, owner)` decorates branch tiles."""
     quarter = n // 4
     start = {c: i * quarter for i, c in enumerate(COLORS)}
-    fork = range(4, 9)  # steps 4..8 of every quarter offer two lanes
 
     def angle(i: float) -> float:
         return math.pi * 0.75 - (i / n) * 2 * math.pi
-
-    def radius(a: float) -> float:
-        return 15.0 + 1.2 * math.sin(4 * a + 0.3)
 
     def point(i: float, r: float | None = None, y: float = 0.0) -> list[float]:
         a = angle(i)
         rr = radius(a) if r is None else r
         return [r3(math.cos(a) * rr), r3(y), r3(-math.sin(a) * rr)]
 
-    nodes, loop = [], []
-    for i in range(n):
-        q, owner = i % quarter, COLORS[i // quarter]
-        kind = "start" if q == 0 else "shrine" if q == 10 else "normal"
-        main = {"id": f"t{i}", "pos": point(i, y=0.1), "kind": kind}
-        if q in (11, 12):
-            main["hazard"] = {"type": "crumble", "uses": 3}
-            main["bridge"] = True
-            main["pos"] = point(i, y=0.45)
-        if q == 13 and owner in ("green", "blue"):
-            main["hazard"] = {"type": "portal", "to": f"t{(i + 5) % n}"}
-        if q == 2 and owner == "yellow":
-            main["hazard"] = {"type": "slide", "steps": -2}
-        if q in fork:
-            if q == 6:
-                main["kind"] = "safe"
-            # The risky lane bulges outwards over the lava flats.
-            bulge = 3.0 * math.sin(math.pi * (q - 3) / 6)
-            alt = {"id": f"a{i}", "pos": point(i, radius(angle(i)) + bulge, 0.2), "kind": "normal", "lane": 1}
-            if q == 5:
-                alt["hazard"] = {"type": "slide", "steps": 3}
-            if q == 6:
-                alt["hazard"] = {"type": "pit"}
-            if q == 7:
-                alt["kind"] = "shrine"
-            nodes += [main, alt]
-            loop.append([main["id"], alt["id"]])
-        else:
-            nodes.append(main)
-            loop.append(main["id"])
+    nodes: list[dict] = []
+    loop: list = []
+    regions: dict[str, dict] = {}
+    for _qi, owner in enumerate(COLORS):
+        base = start[owner]
+        q = 0
+        while q < quarter:
+            i = base + q
+            if q == region_at:
+                rid = f"{owner}_pass"
+                lo, hi = i - 1, i + span  # spine anchors around the region
+                region = {"name": region_name, "branches": []}
+                for bi, b in enumerate(branches):
+                    m = span if bi == 0 else b["length"]
+                    ids = []
+                    for k in range(m):
+                        t = (k + 1) / (m + 1)
+                        idx = lo + t * (hi - lo)
+                        nid = f"{b['id']}_{owner}_{k}"
+                        if bi == 0:
+                            nid = f"t{i + k}"
+                            r = None
+                        else:
+                            r = radius(angle(idx)) + b["bulge"] * math.sin(math.pi * t)
+                        node = {
+                            "id": nid,
+                            "pos": point(i + k if bi == 0 else idx, r, b.get("y", 0.12)),
+                            "kind": "normal",
+                        }
+                        node.update(b["tile"](k, m, owner))
+                        nodes.append(node)
+                        ids.append(nid)
+                    region["branches"].append({"name": b["name"], "tag": b["tag"], "nodes": ids})
+                regions[rid] = region
+                loop.append({"region": rid})
+                q += span
+                continue
+            node = {"id": f"t{i}", "pos": point(i, y=0.1), "kind": "start" if q == 0 else "normal"}
+            node.update(main_tile(q, owner))
+            nodes.append(node)
+            loop.append(node["id"])
+            q += 1
 
     routes, camps = {}, {}
     for color in COLORS:
-        s = start[color]
-        path = [loop[(s + k) % n] for k in range(n - 1)]
-        spoke = s - 1
+        s = loop.index(f"t{start[color]}")
+        path = [loop[(s + k) % len(loop)] for k in range(len(loop) - 1)]
+        spoke = start[color] - 1
         r_out = radius(angle(spoke)) - 2.2
         for k in range(5):
             rr = r_out - k * ((r_out - 4.2) / 4)
@@ -295,7 +314,7 @@ def molten_forge() -> dict:
         nodes.append({"id": gid, "pos": point(spoke, 2.4, 1.3), "kind": "goal"})
         path.append(gid)
         routes[color] = path
-        ca = angle(s - 1.5)
+        ca = angle(start[color] - 1.5)
         cr = radius(ca) + 6.5
         cx, cz = math.cos(ca) * cr, -math.sin(ca) * cr
         fx, fz = math.cos(ca), -math.sin(ca)
@@ -307,38 +326,239 @@ def molten_forge() -> dict:
                 for dx, dy in [(-0.6, -0.4), (0.6, -0.4), (0.0, 0.55)]
             ],
         }
+    return {
+        "nodes": nodes,
+        "loop": loop,
+        "regions": regions,
+        "routes": routes,
+        "camps": camps,
+        "start": start,
+        "angle": angle,
+        "point": point,
+        "quarter": quarter,
+    }
 
-    # Lava flows outwards under each pair of crumbling bridges.
-    rivers = []
-    for c in COLORS:
-        a = angle(start[c] + 11.5)
-        pts = []
-        for k in range(9):
-            rr = 5.5 + k * 4.2
-            wobble = math.sin(k * 1.7) * 0.07
-            pts.append([r3(math.cos(a + wobble) * rr), r3(-math.sin(a + wobble) * rr)])
-        rivers.append({"points": pts, "width": 2.2, "kind": "lava"})
 
+def _flow(angle, at: float, *, inner: float = 5.5, step: float = 4.2, kind: str = "water", width: float = 2.2) -> dict:
+    a = angle(at)
+    pts = []
+    for k in range(9):
+        rr = inner + k * step
+        wobble = math.sin(k * 1.7) * 0.07
+        pts.append([r3(math.cos(a + wobble) * rr), r3(-math.sin(a + wobble) * rr)])
+    return {"points": pts, "width": width, "kind": kind}
+
+
+# --------------------------------------------------------------------- forge
+def molten_forge() -> dict:
+    """Volcanic fortress. Every quarter offers three routes that merge again at
+    a chokepoint: the short Lava Bridge (crumbles, erupts), the Forge Tunnel
+    (conveyors that flip every round, an anvil) and the long, safe Outer Ridge."""
+    n, region_at, span = 64, 3, 7
+
+    def main_tile(q: int, owner: str) -> dict:
+        if q == 10:
+            return {"kind": "safe"}  # the chokepoint where the three routes merge
+        if q == 12:
+            return {"kind": "shrine"}
+        if q == 14 and owner in ("green", "blue"):
+            return {"hazard": {"type": "portal", "to": f"t{(COLORS.index(owner) * 16 + 16 + 1) % n}"}}
+        return {}
+
+    def tunnel(k: int, m: int, owner: str) -> dict:
+        if k in (1, 4):
+            return {"hazard": {"type": "conveyor", "steps": 2}}
+        if k == 3:
+            return {"hazard": {"type": "anvil"}}
+        return {}
+
+    def bridge(k: int, m: int, owner: str) -> dict:
+        return {"hazard": {"type": "crumble", "uses": 4}, "bridge": True}
+
+    def ridge(k: int, m: int, owner: str) -> dict:
+        if k == 3:
+            return {"kind": "shrine"}
+        if k == 6:
+            return {"kind": "safe"}
+        if k == 7:
+            return {"kind": "shrine"}
+        return {}
+
+    def radius(a: float) -> float:
+        return 17.0 + 1.0 * math.sin(4 * a + 0.3)
+
+    ring = ring_map(
+        n=n,
+        radius=radius,
+        region_at=region_at,
+        span=span,
+        region_name="Forge Crossing",
+        main_tile=main_tile,
+        branches=[
+            {"id": "tun", "name": "Forge Tunnel", "tag": "medium · conveyors · anvil", "tile": tunnel},
+            {
+                "id": "lav",
+                "name": "Lava Bridge",
+                "tag": "shortest · crumbles · erupts",
+                "length": 4,
+                "bulge": -4.2,
+                "y": 0.5,
+                "tile": bridge,
+            },
+            {
+                "id": "rdg",
+                "name": "Outer Ridge",
+                "tag": "longest · safe · 2 shrines",
+                "length": 9,
+                "bulge": 4.4,
+                "y": 0.35,
+                "tile": ridge,
+            },
+        ],
+    )
+    angle = ring["angle"]
+    bridges = [nid for r in ring["regions"].values() for nid in r["branches"][1]["nodes"]]
+    conveyors = [x["id"] for x in ring["nodes"] if x.get("hazard", {}).get("type") == "conveyor"]
+    events = [
+        {"type": "eruption", "every": 3, "offset": 0, "knockback": 5, "tiles": bridges},
+        {"type": "conveyor", "every": 1, "tiles": conveyors},
+    ]
+    rivers = [
+        _flow(angle, ring["start"][c] + region_at + span / 2 - 0.5, inner=5.0, step=1.6, kind="lava", width=2.6)
+        for c in COLORS
+    ]
     return {
         "id": "molten_forge",
         "name": "Molten Forge",
-        "description": "A volcanic fortress of forked paths, crumbling bridges over lava, portals and deadly pits.",
+        "description": "Three routes in every quarter: a crumbling Lava Bridge that erupts every 3 rounds, "
+        "the Forge Tunnel with flipping conveyors, or the long, safe Outer Ridge.",
         "theme": "forge",
         "piecesPerTeam": 3,
-        "nodes": nodes,
-        "loop": loop,
-        "routes": routes,
-        "camps": camps,
+        "nodes": ring["nodes"],
+        "loop": ring["loop"],
+        "regions": ring["regions"],
+        "routes": ring["routes"],
+        "events": events,
+        "camps": ring["camps"],
         "goal": [0.0, 1.2, 0.0],
-        "zones": [{"from": start[c], "to": start[c] + quarter - 1, "biome": "volcanic"} for c in COLORS],
+        "zones": [{"from": ring["start"][c], "to": ring["start"][c] + 15, "biome": "volcanic"} for c in COLORS],
         "rivers": rivers,
-        "bounds": 27,
+        "bounds": 31,
+    }
+
+
+# --------------------------------------------------------------------- frost
+def frost_glacier() -> dict:
+    """Frozen highlands. Every quarter: the icy Snowfield Trail, a Frozen Lake
+    shortcut that is only open while frozen, or the long Hot Springs path.
+    Avalanches sweep the cliff path every 4 rounds."""
+    n, region_at, span = 64, 3, 7
+
+    def main_tile(q: int, owner: str) -> dict:
+        if q == 10:
+            return {"kind": "safe"}
+        if q in (12, 13, 14):
+            return {"cliff": True}  # avalanche lane
+        if q == 11:
+            return {"kind": "shrine"}
+        return {}
+
+    def trail(k: int, m: int, owner: str) -> dict:
+        if k in (1, 2, 4):
+            return {"hazard": {"type": "ice"}}
+        return {}
+
+    def lake(k: int, m: int, owner: str) -> dict:
+        return {"hazard": {"type": "thin_ice", "uses": 3}, "lake": True}
+
+    def springs(k: int, m: int, owner: str) -> dict:
+        if k in (2, 6):
+            return {"hazard": {"type": "spring"}}
+        if k == 4:
+            return {"kind": "safe"}
+        return {}
+
+    def radius(a: float) -> float:
+        return 17.0 + 1.6 * math.sin(3 * a + 0.9)
+
+    ring = ring_map(
+        n=n,
+        radius=radius,
+        region_at=region_at,
+        span=span,
+        region_name="Glacier Pass",
+        main_tile=main_tile,
+        branches=[
+            {"id": "snw", "name": "Snowfield Trail", "tag": "medium · ice sheets", "tile": trail},
+            {
+                "id": "lak",
+                "name": "Frozen Lake",
+                "tag": "shortest · open while frozen · thin ice",
+                "length": 3,
+                "bulge": -4.6,
+                "y": 0.02,
+                "tile": lake,
+            },
+            {
+                "id": "spr",
+                "name": "Hot Springs",
+                "tag": "longest · safe · mana springs",
+                "length": 9,
+                "bulge": 4.2,
+                "y": 0.25,
+                "tile": springs,
+            },
+        ],
+    )
+    angle = ring["angle"]
+    events = []
+    for k, (rid, region) in enumerate(ring["regions"].items()):
+        events.append(
+            {
+                "type": "freeze",
+                "region": rid,
+                "branch": 1,
+                "cycle": [3, 2],
+                "offset": k % 2 * 2,
+                "tiles": region["branches"][1]["nodes"],
+            }
+        )
+    cliffs = [x["id"] for x in ring["nodes"] if x.get("cliff")]
+    events.append({"type": "avalanche", "every": 4, "offset": 2, "knockback": 4, "tiles": cliffs})
+    lakes = [
+        {
+            "center": ring["point"](
+                ring["start"][c] + region_at + span / 2 - 0.5,
+                radius(angle(ring["start"][c] + region_at + span / 2 - 0.5)) - 4.6,
+            )[::2],
+            "radius": 3.4,
+        }
+        for c in COLORS
+    ]
+    return {
+        "id": "frost_glacier",
+        "name": "Frost Glacier",
+        "description": "Frozen highlands under the aurora: slide across ice, dash over a frozen lake while it holds, "
+        "or warm up at the hot springs. Watch for avalanches.",
+        "theme": "frost",
+        "piecesPerTeam": 3,
+        "nodes": ring["nodes"],
+        "loop": ring["loop"],
+        "regions": ring["regions"],
+        "routes": ring["routes"],
+        "events": events,
+        "camps": ring["camps"],
+        "goal": [0.0, 1.2, 0.0],
+        "zones": [{"from": ring["start"][c], "to": ring["start"][c] + 15, "biome": "glacier"} for c in COLORS],
+        "rivers": [],
+        "lakes": lakes,
+        "bounds": 31,
     }
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
-    for m in (classic_arena(), emerald_wilds(), molten_forge()):
+    for m in (classic_arena(), emerald_wilds(), molten_forge(), frost_glacier()):
         (OUT / f"{m['id']}.json").write_text(json.dumps(m, indent=1) + "\n", encoding="utf-8")
         print("wrote", m["id"], len(m["nodes"]), "nodes")
 

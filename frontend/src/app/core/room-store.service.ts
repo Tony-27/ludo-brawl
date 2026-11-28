@@ -234,7 +234,11 @@ export class RoomStore {
   move = (piece: number, lane: number | null = null) => this.command({ type: 'move', piece, lane });
   practice = (body: { dice?: number | null; mana?: number | null }) =>
     this.send({ type: 'practice', dice: body.dice ?? null, mana: body.mana ?? null });
-  cast = (ability: string, target: Record<string, unknown>) => this.command({ type: 'cast', ability, target });
+  cast = (ability: string, target: Record<string, unknown>) => {
+    const { preview: _preview, ...clean } = target;
+    this.command({ type: 'cast', ability, target: clean });
+  };
+  endTurn = () => this.command({ type: 'endTurn' });
 
   // ---------------------------------------------------------------- lobby (REST)
   private async act(fn: (code: string) => Promise<RoomView | void>) {

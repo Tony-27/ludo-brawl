@@ -1,0 +1,2046 @@
+{
+ "id": "frost_glacier",
+ "name": "Frost Glacier",
+ "description": "Frozen highlands under the aurora: slide across ice, dash over a frozen lake while it holds, or warm up at the hot springs. Watch for avalanches.",
+ "theme": "frost",
+ "piecesPerTeam": 3,
+ "nodes": [
+  {
+   "id": "t0",
+   "pos": [
+    -13.145,
+    0.1,
+    -13.145
+   ],
+   "kind": "start"
+  },
+  {
+   "id": "t1",
+   "pos": [
+    -11.783,
+    0.1,
+    -14.358
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t2",
+   "pos": [
+    -10.235,
+    0.1,
+    -15.318
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t3",
+   "pos": [
+    -8.556,
+    0.12,
+    -16.007
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t4",
+   "pos": [
+    -6.803,
+    0.12,
+    -16.424
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t5",
+   "pos": [
+    -5.033,
+    0.12,
+    -16.591
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t6",
+   "pos": [
+    -3.291,
+    0.12,
+    -16.545
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t7",
+   "pos": [
+    -1.609,
+    0.12,
+    -16.333
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t8",
+   "pos": [
+    0.0,
+    0.12,
+    -16.005
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t9",
+   "pos": [
+    1.537,
+    0.12,
+    -15.609
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "lak_red_0",
+   "pos": [
+    -5.558,
+    0.02,
+    -13.419
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "lak_red_1",
+   "pos": [
+    -2.394,
+    0.02,
+    -12.034
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "lak_red_2",
+   "pos": [
+    0.0,
+    0.02,
+    -12.753
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "spr_red_0",
+   "pos": [
+    -9.534,
+    0.25,
+    -17.023
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_red_1",
+   "pos": [
+    -8.543,
+    0.25,
+    -18.531
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_red_2",
+   "pos": [
+    -7.27,
+    0.25,
+    -19.707
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "spring"
+   }
+  },
+  {
+   "id": "spr_red_3",
+   "pos": [
+    -5.765,
+    0.25,
+    -20.442
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_red_4",
+   "pos": [
+    -4.11,
+    0.25,
+    -20.665
+   ],
+   "kind": "safe"
+  },
+  {
+   "id": "spr_red_5",
+   "pos": [
+    -2.409,
+    0.25,
+    -20.353
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_red_6",
+   "pos": [
+    -0.768,
+    0.25,
+    -19.542
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "spring"
+   }
+  },
+  {
+   "id": "spr_red_7",
+   "pos": [
+    0.72,
+    0.25,
+    -18.32
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_red_8",
+   "pos": [
+    1.99,
+    0.25,
+    -16.814
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t10",
+   "pos": [
+    3.019,
+    0.1,
+    -15.179
+   ],
+   "kind": "safe"
+  },
+  {
+   "id": "t11",
+   "pos": [
+    4.47,
+    0.1,
+    -14.737
+   ],
+   "kind": "shrine"
+  },
+  {
+   "id": "t12",
+   "pos": [
+    5.917,
+    0.1,
+    -14.285
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t13",
+   "pos": [
+    7.38,
+    0.1,
+    -13.807
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t14",
+   "pos": [
+    8.87,
+    0.1,
+    -13.274
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t15",
+   "pos": [
+    10.381,
+    0.1,
+    -12.649
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t16",
+   "pos": [
+    11.891,
+    0.1,
+    -11.891
+   ],
+   "kind": "start"
+  },
+  {
+   "id": "t17",
+   "pos": [
+    13.363,
+    0.1,
+    -10.966
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t18",
+   "pos": [
+    14.743,
+    0.1,
+    -9.851
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t19",
+   "pos": [
+    15.974,
+    0.12,
+    -8.538
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t20",
+   "pos": [
+    16.998,
+    0.12,
+    -7.041
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t21",
+   "pos": [
+    17.765,
+    0.12,
+    -5.389
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t22",
+   "pos": [
+    18.237,
+    0.12,
+    -3.628
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t23",
+   "pos": [
+    18.399,
+    0.12,
+    -1.812
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t24",
+   "pos": [
+    18.253,
+    0.12,
+    -0.0
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t25",
+   "pos": [
+    17.824,
+    0.12,
+    1.756
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "lak_green_0",
+   "pos": [
+    13.993,
+    0.02,
+    -5.796
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "lak_green_1",
+   "pos": [
+    13.726,
+    0.02,
+    -2.73
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "lak_green_2",
+   "pos": [
+    15.001,
+    0.02,
+    -0.0
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "spr_green_0",
+   "pos": [
+    16.875,
+    0.25,
+    -9.45
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_green_1",
+   "pos": [
+    18.859,
+    0.25,
+    -8.694
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_green_2",
+   "pos": [
+    20.526,
+    0.25,
+    -7.572
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "spring"
+   }
+  },
+  {
+   "id": "spr_green_3",
+   "pos": [
+    21.728,
+    0.25,
+    -6.128
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_green_4",
+   "pos": [
+    22.357,
+    0.25,
+    -4.447
+   ],
+   "kind": "safe"
+  },
+  {
+   "id": "spr_green_5",
+   "pos": [
+    22.358,
+    0.25,
+    -2.646
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_green_6",
+   "pos": [
+    21.743,
+    0.25,
+    -0.854
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "spring"
+   }
+  },
+  {
+   "id": "spr_green_7",
+   "pos": [
+    20.581,
+    0.25,
+    0.809
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_green_8",
+   "pos": [
+    18.997,
+    0.25,
+    2.248
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t26",
+   "pos": [
+    17.153,
+    0.1,
+    3.412
+   ],
+   "kind": "safe"
+  },
+  {
+   "id": "t27",
+   "pos": [
+    16.293,
+    0.1,
+    4.942
+   ],
+   "kind": "shrine"
+  },
+  {
+   "id": "t28",
+   "pos": [
+    15.3,
+    0.1,
+    6.338
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t29",
+   "pos": [
+    14.228,
+    0.1,
+    7.605
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t30",
+   "pos": [
+    13.121,
+    0.1,
+    8.767
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t31",
+   "pos": [
+    12.006,
+    0.1,
+    9.853
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t32",
+   "pos": [
+    10.897,
+    0.1,
+    10.897
+   ],
+   "kind": "start"
+  },
+  {
+   "id": "t33",
+   "pos": [
+    9.786,
+    0.1,
+    11.924
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t34",
+   "pos": [
+    8.654,
+    0.1,
+    12.952
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t35",
+   "pos": [
+    7.472,
+    0.12,
+    13.979
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t36",
+   "pos": [
+    6.208,
+    0.12,
+    14.988
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t37",
+   "pos": [
+    4.837,
+    0.12,
+    15.945
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t38",
+   "pos": [
+    3.342,
+    0.12,
+    16.801
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t39",
+   "pos": [
+    1.724,
+    0.12,
+    17.503
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t40",
+   "pos": [
+    0.0,
+    0.12,
+    17.995
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t41",
+   "pos": [
+    -1.795,
+    0.12,
+    18.227
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "lak_yellow_0",
+   "pos": [
+    4.963,
+    0.02,
+    11.983
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "lak_yellow_1",
+   "pos": [
+    2.445,
+    0.02,
+    12.29
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "lak_yellow_2",
+   "pos": [
+    0.0,
+    0.02,
+    14.742
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "spr_yellow_0",
+   "pos": [
+    8.348,
+    0.25,
+    14.906
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_yellow_1",
+   "pos": [
+    7.759,
+    0.25,
+    16.83
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_yellow_2",
+   "pos": [
+    6.85,
+    0.25,
+    18.567
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "spring"
+   }
+  },
+  {
+   "id": "spr_yellow_3",
+   "pos": [
+    5.632,
+    0.25,
+    19.97
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_yellow_4",
+   "pos": [
+    4.161,
+    0.25,
+    20.921
+   ],
+   "kind": "safe"
+  },
+  {
+   "id": "spr_yellow_5",
+   "pos": [
+    2.526,
+    0.25,
+    21.345
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_yellow_6",
+   "pos": [
+    0.834,
+    0.25,
+    21.222
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "spring"
+   }
+  },
+  {
+   "id": "spr_yellow_7",
+   "pos": [
+    -0.809,
+    0.25,
+    20.588
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_yellow_8",
+   "pos": [
+    -2.311,
+    0.25,
+    19.528
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t42",
+   "pos": [
+    -3.614,
+    0.1,
+    18.167
+   ],
+   "kind": "safe"
+  },
+  {
+   "id": "t43",
+   "pos": [
+    -5.399,
+    0.1,
+    17.799
+   ],
+   "kind": "shrine"
+  },
+  {
+   "id": "t44",
+   "pos": [
+    -7.094,
+    0.1,
+    17.127
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t45",
+   "pos": [
+    -8.648,
+    0.1,
+    16.179
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t46",
+   "pos": [
+    -10.02,
+    0.1,
+    14.996
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t47",
+   "pos": [
+    -11.188,
+    0.1,
+    13.633
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t48",
+   "pos": [
+    -12.15,
+    0.1,
+    12.15
+   ],
+   "kind": "start"
+  },
+  {
+   "id": "t49",
+   "pos": [
+    -12.92,
+    0.1,
+    10.603
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t50",
+   "pos": [
+    -13.527,
+    0.1,
+    9.039
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t51",
+   "pos": [
+    -14.011,
+    0.12,
+    7.489
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t52",
+   "pos": [
+    -14.414,
+    0.12,
+    5.97
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t53",
+   "pos": [
+    -14.771,
+    0.12,
+    4.481
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t54",
+   "pos": [
+    -15.109,
+    0.12,
+    3.005
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t55",
+   "pos": [
+    -15.437,
+    0.12,
+    1.52
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "ice"
+   }
+  },
+  {
+   "id": "t56",
+   "pos": [
+    -15.747,
+    0.12,
+    0.0
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t57",
+   "pos": [
+    -16.012,
+    0.12,
+    -1.577
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "lak_blue_0",
+   "pos": [
+    -11.409,
+    0.02,
+    4.726
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "lak_blue_1",
+   "pos": [
+    -10.598,
+    0.02,
+    2.108
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "lak_blue_2",
+   "pos": [
+    -12.494,
+    0.02,
+    0.0
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "thin_ice",
+    "uses": 3
+   },
+   "lake": true
+  },
+  {
+   "id": "spr_blue_0",
+   "pos": [
+    -15.055,
+    0.25,
+    8.431
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_blue_1",
+   "pos": [
+    -16.502,
+    0.25,
+    7.608
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_blue_2",
+   "pos": [
+    -17.748,
+    0.25,
+    6.548
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "spring"
+   }
+  },
+  {
+   "id": "spr_blue_3",
+   "pos": [
+    -18.684,
+    0.25,
+    5.27
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_blue_4",
+   "pos": [
+    -19.229,
+    0.25,
+    3.825
+   ],
+   "kind": "safe"
+  },
+  {
+   "id": "spr_blue_5",
+   "pos": [
+    -19.339,
+    0.25,
+    2.289
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_blue_6",
+   "pos": [
+    -19.022,
+    0.25,
+    0.747
+   ],
+   "kind": "normal",
+   "hazard": {
+    "type": "spring"
+   }
+  },
+  {
+   "id": "spr_blue_7",
+   "pos": [
+    -18.327,
+    0.25,
+    -0.72
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "spr_blue_8",
+   "pos": [
+    -17.345,
+    0.25,
+    -2.053
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "t58",
+   "pos": [
+    -16.193,
+    0.1,
+    -3.221
+   ],
+   "kind": "safe"
+  },
+  {
+   "id": "t59",
+   "pos": [
+    -16.243,
+    0.1,
+    -4.927
+   ],
+   "kind": "shrine"
+  },
+  {
+   "id": "t60",
+   "pos": [
+    -16.112,
+    0.1,
+    -6.674
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t61",
+   "pos": [
+    -15.757,
+    0.1,
+    -8.422
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t62",
+   "pos": [
+    -15.149,
+    0.1,
+    -10.122
+   ],
+   "kind": "normal",
+   "cliff": true
+  },
+  {
+   "id": "t63",
+   "pos": [
+    -14.276,
+    0.1,
+    -11.716
+   ],
+   "kind": "normal"
+  },
+  {
+   "id": "h_red_0",
+   "pos": [
+    -12.575,
+    0.2,
+    -10.32
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_red_1",
+   "pos": [
+    -10.243,
+    0.38,
+    -8.406
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_red_2",
+   "pos": [
+    -7.911,
+    0.56,
+    -6.492
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_red_3",
+   "pos": [
+    -5.579,
+    0.74,
+    -4.578
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_red_4",
+   "pos": [
+    -3.247,
+    0.92,
+    -2.664
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "goal_red",
+   "pos": [
+    -1.855,
+    1.3,
+    -1.523
+   ],
+   "kind": "goal"
+  },
+  {
+   "id": "h_green_0",
+   "pos": [
+    8.985,
+    0.2,
+    -10.949
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_green_1",
+   "pos": [
+    7.405,
+    0.38,
+    -9.023
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_green_2",
+   "pos": [
+    5.825,
+    0.56,
+    -7.098
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_green_3",
+   "pos": [
+    4.245,
+    0.74,
+    -5.172
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_green_4",
+   "pos": [
+    2.664,
+    0.92,
+    -3.247
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "goal_green",
+   "pos": [
+    1.523,
+    1.3,
+    -1.855
+   ],
+   "kind": "goal"
+  },
+  {
+   "id": "h_yellow_0",
+   "pos": [
+    10.306,
+    0.2,
+    8.458
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_yellow_1",
+   "pos": [
+    8.541,
+    0.38,
+    7.009
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_yellow_2",
+   "pos": [
+    6.776,
+    0.56,
+    5.561
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_yellow_3",
+   "pos": [
+    5.011,
+    0.74,
+    4.113
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_yellow_4",
+   "pos": [
+    3.247,
+    0.92,
+    2.664
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "goal_yellow",
+   "pos": [
+    1.855,
+    1.3,
+    1.523
+   ],
+   "kind": "goal"
+  },
+  {
+   "id": "h_blue_0",
+   "pos": [
+    -9.793,
+    0.2,
+    11.933
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_blue_1",
+   "pos": [
+    -8.011,
+    0.38,
+    9.761
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_blue_2",
+   "pos": [
+    -6.229,
+    0.56,
+    7.59
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_blue_3",
+   "pos": [
+    -4.447,
+    0.74,
+    5.418
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "h_blue_4",
+   "pos": [
+    -2.664,
+    0.92,
+    3.247
+   ],
+   "kind": "home"
+  },
+  {
+   "id": "goal_blue",
+   "pos": [
+    -1.523,
+    1.3,
+    1.855
+   ],
+   "kind": "goal"
+  }
+ ],
+ "loop": [
+  "t0",
+  "t1",
+  "t2",
+  {
+   "region": "red_pass"
+  },
+  "t10",
+  "t11",
+  "t12",
+  "t13",
+  "t14",
+  "t15",
+  "t16",
+  "t17",
+  "t18",
+  {
+   "region": "green_pass"
+  },
+  "t26",
+  "t27",
+  "t28",
+  "t29",
+  "t30",
+  "t31",
+  "t32",
+  "t33",
+  "t34",
+  {
+   "region": "yellow_pass"
+  },
+  "t42",
+  "t43",
+  "t44",
+  "t45",
+  "t46",
+  "t47",
+  "t48",
+  "t49",
+  "t50",
+  {
+   "region": "blue_pass"
+  },
+  "t58",
+  "t59",
+  "t60",
+  "t61",
+  "t62",
+  "t63"
+ ],
+ "regions": {
+  "red_pass": {
+   "name": "Glacier Pass",
+   "branches": [
+    {
+     "name": "Snowfield Trail",
+     "tag": "medium \u00b7 ice sheets",
+     "nodes": [
+      "t3",
+      "t4",
+      "t5",
+      "t6",
+      "t7",
+      "t8",
+      "t9"
+     ]
+    },
+    {
+     "name": "Frozen Lake",
+     "tag": "shortest \u00b7 open while frozen \u00b7 thin ice",
+     "nodes": [
+      "lak_red_0",
+      "lak_red_1",
+      "lak_red_2"
+     ]
+    },
+    {
+     "name": "Hot Springs",
+     "tag": "longest \u00b7 safe \u00b7 mana springs",
+     "nodes": [
+      "spr_red_0",
+      "spr_red_1",
+      "spr_red_2",
+      "spr_red_3",
+      "spr_red_4",
+      "spr_red_5",
+      "spr_red_6",
+      "spr_red_7",
+      "spr_red_8"
+     ]
+    }
+   ]
+  },
+  "green_pass": {
+   "name": "Glacier Pass",
+   "branches": [
+    {
+     "name": "Snowfield Trail",
+     "tag": "medium \u00b7 ice sheets",
+     "nodes": [
+      "t19",
+      "t20",
+      "t21",
+      "t22",
+      "t23",
+      "t24",
+      "t25"
+     ]
+    },
+    {
+     "name": "Frozen Lake",
+     "tag": "shortest \u00b7 open while frozen \u00b7 thin ice",
+     "nodes": [
+      "lak_green_0",
+      "lak_green_1",
+      "lak_green_2"
+     ]
+    },
+    {
+     "name": "Hot Springs",
+     "tag": "longest \u00b7 safe \u00b7 mana springs",
+     "nodes": [
+      "spr_green_0",
+      "spr_green_1",
+      "spr_green_2",
+      "spr_green_3",
+      "spr_green_4",
+      "spr_green_5",
+      "spr_green_6",
+      "spr_green_7",
+      "spr_green_8"
+     ]
+    }
+   ]
+  },
+  "yellow_pass": {
+   "name": "Glacier Pass",
+   "branches": [
+    {
+     "name": "Snowfield Trail",
+     "tag": "medium \u00b7 ice sheets",
+     "nodes": [
+      "t35",
+      "t36",
+      "t37",
+      "t38",
+      "t39",
+      "t40",
+      "t41"
+     ]
+    },
+    {
+     "name": "Frozen Lake",
+     "tag": "shortest \u00b7 open while frozen \u00b7 thin ice",
+     "nodes": [
+      "lak_yellow_0",
+      "lak_yellow_1",
+      "lak_yellow_2"
+     ]
+    },
+    {
+     "name": "Hot Springs",
+     "tag": "longest \u00b7 safe \u00b7 mana springs",
+     "nodes": [
+      "spr_yellow_0",
+      "spr_yellow_1",
+      "spr_yellow_2",
+      "spr_yellow_3",
+      "spr_yellow_4",
+      "spr_yellow_5",
+      "spr_yellow_6",
+      "spr_yellow_7",
+      "spr_yellow_8"
+     ]
+    }
+   ]
+  },
+  "blue_pass": {
+   "name": "Glacier Pass",
+   "branches": [
+    {
+     "name": "Snowfield Trail",
+     "tag": "medium \u00b7 ice sheets",
+     "nodes": [
+      "t51",
+      "t52",
+      "t53",
+      "t54",
+      "t55",
+      "t56",
+      "t57"
+     ]
+    },
+    {
+     "name": "Frozen Lake",
+     "tag": "shortest \u00b7 open while frozen \u00b7 thin ice",
+     "nodes": [
+      "lak_blue_0",
+      "lak_blue_1",
+      "lak_blue_2"
+     ]
+    },
+    {
+     "name": "Hot Springs",
+     "tag": "longest \u00b7 safe \u00b7 mana springs",
+     "nodes": [
+      "spr_blue_0",
+      "spr_blue_1",
+      "spr_blue_2",
+      "spr_blue_3",
+      "spr_blue_4",
+      "spr_blue_5",
+      "spr_blue_6",
+      "spr_blue_7",
+      "spr_blue_8"
+     ]
+    }
+   ]
+  }
+ },
+ "routes": {
+  "red": [
+   "t0",
+   "t1",
+   "t2",
+   {
+    "region": "red_pass"
+   },
+   "t10",
+   "t11",
+   "t12",
+   "t13",
+   "t14",
+   "t15",
+   "t16",
+   "t17",
+   "t18",
+   {
+    "region": "green_pass"
+   },
+   "t26",
+   "t27",
+   "t28",
+   "t29",
+   "t30",
+   "t31",
+   "t32",
+   "t33",
+   "t34",
+   {
+    "region": "yellow_pass"
+   },
+   "t42",
+   "t43",
+   "t44",
+   "t45",
+   "t46",
+   "t47",
+   "t48",
+   "t49",
+   "t50",
+   {
+    "region": "blue_pass"
+   },
+   "t58",
+   "t59",
+   "t60",
+   "t61",
+   "t62",
+   "h_red_0",
+   "h_red_1",
+   "h_red_2",
+   "h_red_3",
+   "h_red_4",
+   "goal_red"
+  ],
+  "green": [
+   "t16",
+   "t17",
+   "t18",
+   {
+    "region": "green_pass"
+   },
+   "t26",
+   "t27",
+   "t28",
+   "t29",
+   "t30",
+   "t31",
+   "t32",
+   "t33",
+   "t34",
+   {
+    "region": "yellow_pass"
+   },
+   "t42",
+   "t43",
+   "t44",
+   "t45",
+   "t46",
+   "t47",
+   "t48",
+   "t49",
+   "t50",
+   {
+    "region": "blue_pass"
+   },
+   "t58",
+   "t59",
+   "t60",
+   "t61",
+   "t62",
+   "t63",
+   "t0",
+   "t1",
+   "t2",
+   {
+    "region": "red_pass"
+   },
+   "t10",
+   "t11",
+   "t12",
+   "t13",
+   "t14",
+   "h_green_0",
+   "h_green_1",
+   "h_green_2",
+   "h_green_3",
+   "h_green_4",
+   "goal_green"
+  ],
+  "yellow": [
+   "t32",
+   "t33",
+   "t34",
+   {
+    "region": "yellow_pass"
+   },
+   "t42",
+   "t43",
+   "t44",
+   "t45",
+   "t46",
+   "t47",
+   "t48",
+   "t49",
+   "t50",
+   {
+    "region": "blue_pass"
+   },
+   "t58",
+   "t59",
+   "t60",
+   "t61",
+   "t62",
+   "t63",
+   "t0",
+   "t1",
+   "t2",
+   {
+    "region": "red_pass"
+   },
+   "t10",
+   "t11",
+   "t12",
+   "t13",
+   "t14",
+   "t15",
+   "t16",
+   "t17",
+   "t18",
+   {
+    "region": "green_pass"
+   },
+   "t26",
+   "t27",
+   "t28",
+   "t29",
+   "t30",
+   "h_yellow_0",
+   "h_yellow_1",
+   "h_yellow_2",
+   "h_yellow_3",
+   "h_yellow_4",
+   "goal_yellow"
+  ],
+  "blue": [
+   "t48",
+   "t49",
+   "t50",
+   {
+    "region": "blue_pass"
+   },
+   "t58",
+   "t59",
+   "t60",
+   "t61",
+   "t62",
+   "t63",
+   "t0",
+   "t1",
+   "t2",
+   {
+    "region": "red_pass"
+   },
+   "t10",
+   "t11",
+   "t12",
+   "t13",
+   "t14",
+   "t15",
+   "t16",
+   "t17",
+   "t18",
+   {
+    "region": "green_pass"
+   },
+   "t26",
+   "t27",
+   "t28",
+   "t29",
+   "t30",
+   "t31",
+   "t32",
+   "t33",
+   "t34",
+   {
+    "region": "yellow_pass"
+   },
+   "t42",
+   "t43",
+   "t44",
+   "t45",
+   "t46",
+   "h_blue_0",
+   "h_blue_1",
+   "h_blue_2",
+   "h_blue_3",
+   "h_blue_4",
+   "goal_blue"
+  ]
+ },
+ "events": [
+  {
+   "type": "freeze",
+   "region": "red_pass",
+   "branch": 1,
+   "cycle": [
+    3,
+    2
+   ],
+   "offset": 0,
+   "tiles": [
+    "lak_red_0",
+    "lak_red_1",
+    "lak_red_2"
+   ]
+  },
+  {
+   "type": "freeze",
+   "region": "green_pass",
+   "branch": 1,
+   "cycle": [
+    3,
+    2
+   ],
+   "offset": 2,
+   "tiles": [
+    "lak_green_0",
+    "lak_green_1",
+    "lak_green_2"
+   ]
+  },
+  {
+   "type": "freeze",
+   "region": "yellow_pass",
+   "branch": 1,
+   "cycle": [
+    3,
+    2
+   ],
+   "offset": 0,
+   "tiles": [
+    "lak_yellow_0",
+    "lak_yellow_1",
+    "lak_yellow_2"
+   ]
+  },
+  {
+   "type": "freeze",
+   "region": "blue_pass",
+   "branch": 1,
+   "cycle": [
+    3,
+    2
+   ],
+   "offset": 2,
+   "tiles": [
+    "lak_blue_0",
+    "lak_blue_1",
+    "lak_blue_2"
+   ]
+  },
+  {
+   "type": "avalanche",
+   "every": 4,
+   "offset": 2,
+   "knockback": 4,
+   "tiles": [
+    "t12",
+    "t13",
+    "t14",
+    "t28",
+    "t29",
+    "t30",
+    "t44",
+    "t45",
+    "t46",
+    "t60",
+    "t61",
+    "t62"
+   ]
+  }
+ ],
+ "camps": {
+  "red": {
+   "center": [
+    -19.967,
+    0.0,
+    -14.808
+   ],
+   "slots": [
+    [
+     -20.017,
+     0.5,
+     -13.8
+    ],
+    [
+     -19.016,
+     0.5,
+     -15.149
+    ],
+    [
+     -20.585,
+     0.5,
+     -15.267
+    ]
+   ]
+  },
+  "green": {
+   "center": [
+    13.496,
+    0.0,
+    -18.197
+   ],
+   "slots": [
+    [
+     12.487,
+     0.5,
+     -18.247
+    ],
+    [
+     13.837,
+     0.5,
+     -17.246
+    ],
+    [
+     13.954,
+     0.5,
+     -18.815
+    ]
+   ]
+  },
+  "yellow": {
+   "center": [
+    17.784,
+    0.0,
+    13.19
+   ],
+   "slots": [
+    [
+     17.835,
+     0.5,
+     12.181
+    ],
+    [
+     16.834,
+     0.5,
+     13.531
+    ],
+    [
+     18.403,
+     0.5,
+     13.648
+    ]
+   ]
+  },
+  "blue": {
+   "center": [
+    -14.502,
+    0.0,
+    19.554
+   ],
+   "slots": [
+    [
+     -13.494,
+     0.5,
+     19.605
+    ],
+    [
+     -14.843,
+     0.5,
+     18.604
+    ],
+    [
+     -14.961,
+     0.5,
+     20.173
+    ]
+   ]
+  }
+ },
+ "goal": [
+  0.0,
+  1.2,
+  0.0
+ ],
+ "zones": [
+  {
+   "from": 0,
+   "to": 15,
+   "biome": "glacier"
+  },
+  {
+   "from": 16,
+   "to": 31,
+   "biome": "glacier"
+  },
+  {
+   "from": 32,
+   "to": 47,
+   "biome": "glacier"
+  },
+  {
+   "from": 48,
+   "to": 63,
+   "biome": "glacier"
+  }
+ ],
+ "rivers": [],
+ "lakes": [
+  {
+   "center": [
+    -2.394,
+    -12.034
+   ],
+   "radius": 3.4
+  },
+  {
+   "center": [
+    13.726,
+    -2.73
+   ],
+   "radius": 3.4
+  },
+  {
+   "center": [
+    2.445,
+    12.29
+   ],
+   "radius": 3.4
+  },
+  {
+   "center": [
+    -10.598,
+    2.108
+   ],
+   "radius": 3.4
+  }
+ ],
+ "bounds": 31
+}

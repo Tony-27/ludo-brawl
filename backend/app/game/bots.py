@@ -19,7 +19,7 @@ BOT_NAMES = ["Robo Rex", "Dicey Diana", "Bolt", "Captain Six", "Pixel Pete", "La
 
 @dataclass
 class BotAction:
-    kind: str  # "cast" | "roll" | "move"
+    kind: str  # "cast" | "roll" | "move" | "end"
     ability: str | None = None
     target: dict | None = None
     piece: int | None = None
@@ -28,25 +28,27 @@ class BotAction:
 
 def _team_value(match: Match, color: Color) -> float:
     team = match.teams[color]
-    finish = match.board.finish(color)
+    full = match.board.finish(color)
     value = 0.0
     for i, p in enumerate(team.pieces):
         if p == CAMP:
             value -= 12
             continue
-        if p >= finish:
+        if match.is_finished(color, i):
             value += 130
             continue
-        value += 10 + 100 * p / finish
+        value += 10 + 100 * (1 - match.remaining(color, i) / full)
         node = match.node_of(color, i)
-        if node is not None and (match.board.is_immune(node)):
+        if node is not None and match.board.is_immune(node):
             value += 4
+        elif node is not None and node.id in match.warnings:
+            value -= 25  # an eruption / avalanche is about to hit this tile
         st = team.statuses[i]
         if "shield" in st:
             value += 3
         if "rooted" in st:
             value -= 4
-    value += team.mana * 1.2
+    value += team.mana * 1.2 + (3 if team.empowered else 0)
     if color in match.ranking:
         value += 400 * (len(match.order) - match.ranking.index(color))
     return value
@@ -107,6 +109,8 @@ def choose_action(match: Match, rng: random.Random | None = None) -> BotAction:
         return best_cast(match) or BotAction("roll")
     if match.phase == Phase.MOVE:
         return best_move(match, rng)
+    if match.phase == Phase.ACT:
+        return best_cast(match) or BotAction("end")
     raise RuleError("Game over")
 
 

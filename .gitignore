@@ -27,3 +27,5 @@ Thumbs.db
 *.db
 backend/.env
 .ruff_cache/
+deploy/backups/
+deploy/.env

@@ -16,6 +16,7 @@ from .protocol import (
     PROTOCOL_VERSION,
     CastCommand,
     ClientMessage,
+    EndTurnCommand,
     MoveCommand,
     PingCommand,
     PracticeCommand,
@@ -118,6 +119,8 @@ async def room_socket(ws: WebSocket, code: str, token: str | None = None) -> Non
                 rooms.move(room, current, msg.piece, msg.lane)
             elif isinstance(msg, CastCommand):
                 rooms.cast(room, current, msg.ability, msg.target)
+            elif isinstance(msg, EndTurnCommand):
+                rooms.end_turn(room, current)
             elif isinstance(msg, PracticeCommand):
                 rooms.practice(room, current, dice=msg.dice, mana=msg.mana)
         except LudoError as e:

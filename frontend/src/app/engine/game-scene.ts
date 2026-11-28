@@ -1,5 +1,5 @@
 import { Engine, PointerEventTypes, Scene, Vector3 } from '@babylonjs/core';
-import type { Color, EventsMessage, PlayerView, RoomView } from '../core/protocol';
+import type { Color, EventsMessage, MoveOptionView, PlayerView, RoomView } from '../core/protocol';
 import { AssetLoader } from './assets/asset-loader';
 import { SKINS, TEAM_RGB, skinArt } from './assets/catalog';
 import { CharacterActor } from './actors/character';
@@ -17,7 +17,7 @@ export type Quality = 'high' | 'medium';
 /** What the local player can click right now. */
 export type Interaction =
   | { mode: 'none' }
-  | { mode: 'move'; options: { piece: number; lane: number | null; to: number }[] }
+  | { mode: 'move'; options: MoveOptionView[] }
   | { mode: 'target'; targets: { color: Color; piece: number }[] }
   | { mode: 'tile'; tiles: string[] };
 
@@ -44,6 +44,8 @@ export class GameScene {
   onPick: (target: PieceTarget) => void = () => {};
   onPickTile: (nodeId: string) => void = () => {};
   onCue: (cue: SceneCue) => void = () => {};
+  /** A hero was picked at a fork: Angular shows the route cards (null hides them). */
+  onRouteChoice: (choice: { piece: number; options: MoveOptionView[] } | null) => void = () => {};
 
   readonly engine: Engine;
   readonly scene: Scene;
@@ -58,8 +60,10 @@ export class GameScene {
   private player!: EventPlayer;
   private assets: AssetLoader;
   private interaction: Interaction = { mode: 'none' };
-  /** A piece picked at a fork, waiting for the player to choose its lane. */
-  private laneChoice: { piece: number; tiles: [string, string] } | null = null;
+  /** A piece picked at a fork, waiting for the player to choose its route. */
+  private laneChoice: { piece: number; options: MoveOptionView[]; tiles: string[] } | null = null;
+  /** Tiles a spell or move would affect (thin rings, not clickable). */
+  private previewIds: string[] = [];
   private hovered: CharacterActor | null = null;
   private resize = () => this.engine.resize();
   private disposed = false;
@@ -155,7 +159,7 @@ export class GameScene {
           const actor = new CharacterActor(this.scene, container, art, p.color, i, this.world.shadows, this.tween);
           // Heroes scale with the board so they fit their tiles on every map.
           actor.root.scaling.setAll(Math.max(0.62, Math.min(1, this.world.spacing / 1.45)));
-          actor.place(this.layout.position(p.color, -1, i), this.layout.forward(p.color, -1));
+          actor.place(this.layout.position(p.color, null, i), this.layout.forward(p.color, null));
           this.actors.set(`${p.color}${i}`, actor);
         }
       }),
@@ -195,6 +199,7 @@ export class GameScene {
   setInteraction(i: Interaction) {
     const changed = JSON.stringify(i) !== JSON.stringify(this.interaction);
     this.interaction = i;
+    if (this.laneChoice) this.onRouteChoice(null);
     this.laneChoice = null;
     this.refreshHighlights();
     if (changed && !this.player?.busy) this.frameInteraction();
@@ -210,6 +215,7 @@ export class GameScene {
     else if (this.laneChoice) this.world?.highlightTiles(this.laneChoice.tiles, [0.55, 1, 0.75]);
     else if (i.mode === 'tile') this.world?.highlightTiles(i.tiles, me ? this.teamRgb(me) : [1, 0.85, 0.3]);
     else this.world?.highlightTiles([], [1, 1, 1]);
+    this.world?.previewTiles(busy ? [] : this.previewIds, [1, 0.45, 0.3]);
   }
 
   /** Point the camera at everything the player is choosing between. */
@@ -219,11 +225,10 @@ export class GameScene {
     if (!me || i.mode === 'none') return;
     const pts: Vector3[] = [];
     if (i.mode === 'move') {
-      const room = this.player.room;
       for (const o of i.options) {
         const a = this.actor(me, o.piece);
         if (a) pts.push(a.position.clone());
-        pts.push(this.layout.position(me, o.to, o.piece, o.lane ?? room?.match?.teams[me]?.lanes[o.piece] ?? 0));
+        pts.push(this.layout.position(me, o.tile, o.piece));
       }
     } else if (i.mode === 'target') {
       for (const t of i.targets) {
@@ -254,6 +259,21 @@ export class GameScene {
     this.director.overview();
   }
 
+  /** Show which tiles a spell (or move) would hit. */
+  preview(tiles: string[]) {
+    this.previewIds = tiles;
+    this.refreshHighlights();
+  }
+
+  /** A route card was clicked in the HUD. */
+  chooseRoute(piece: number, lane: number | null) {
+    const color = this.opts.myColor;
+    this.laneChoice = null;
+    this.onRouteChoice(null);
+    this.refreshHighlights();
+    if (color) this.onPick({ color, piece, lane });
+  }
+
   private allowed(): Set<CharacterActor> {
     const i = this.interaction;
     const set = new Set<CharacterActor>();
@@ -271,11 +291,14 @@ export class GameScene {
       const opts = i.options.filter((o) => o.piece === piece);
       if (!opts.length) return;
       if (opts.length > 1) {
-        // A fork: show both landing tiles and wait for a choice.
-        const tiles = opts.map((o) => this.layout.nodeAt(color, o.to, o.lane ?? 0)!.id) as [string, string];
-        this.laneChoice = { piece, tiles };
+        // A fork: show every route's landing tile and wait for a choice.
+        const tiles = opts.map((o) => o.tile);
+        this.laneChoice = { piece, options: opts, tiles };
+        this.previewIds = opts.flatMap((o) => o.path);
         this.refreshHighlights();
-        this.director.frame(tiles.map((id) => Vector3.FromArray(this.layout.nodes.get(id)!.pos)).concat([this.actor(color, piece)!.position.clone()]));
+        const pts = opts.flatMap((o) => o.path.map((id) => this.layout.tilePos(id)!).filter(Boolean));
+        this.director.frame(pts.concat([this.actor(color, piece)!.position.clone()]));
+        this.onRouteChoice({ piece, options: opts });
         this.onCue('step');
         return;
       }
@@ -295,11 +318,15 @@ export class GameScene {
   private handleTile(nodeId: string) {
     if (this.player.busy) return;
     if (this.laneChoice) {
-      const lane = this.laneChoice.tiles.indexOf(nodeId);
-      const piece = this.laneChoice.piece;
-      this.laneChoice = null;
-      this.refreshHighlights();
-      if (lane >= 0 && this.opts.myColor) this.onPick({ color: this.opts.myColor, piece, lane });
+      const k = this.laneChoice.tiles.indexOf(nodeId);
+      const { piece, options } = this.laneChoice;
+      this.previewIds = [];
+      if (k >= 0) this.chooseRoute(piece, options[k].lane);
+      else {
+        this.laneChoice = null;
+        this.onRouteChoice(null);
+        this.refreshHighlights();
+      }
       return;
     }
     if (this.interaction.mode === 'tile' && this.interaction.tiles.includes(nodeId)) this.onPickTile(nodeId);
@@ -307,6 +334,12 @@ export class GameScene {
 
   private handleHover(actor: CharacterActor | undefined, overTile: boolean) {
     const ok = actor && !this.player.busy && this.allowed().has(actor) ? actor : null;
+    if (ok !== this.hovered && !this.laneChoice && this.interaction.mode === 'move') {
+      // Hovering a hero previews the tiles its move would walk.
+      const opts = ok ? this.interaction.options.filter((o) => o.piece === ok.piece) : [];
+      this.previewIds = opts.flatMap((o) => o.path);
+      this.refreshHighlights();
+    }
     this.hovered = ok;
     this.canvas.style.cursor = ok || overTile ? 'pointer' : '';
   }

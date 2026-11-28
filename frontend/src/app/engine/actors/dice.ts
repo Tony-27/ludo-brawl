@@ -109,6 +109,7 @@ export class WorldDice {
     const final = Quaternion.RotationAxis(Vector3.Up(), Math.random() * Math.PI * 2).multiply(up);
     const axis = new Vector3(Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5).normalize();
     const start = Quaternion.RotationAxis(axis, Math.random() * 6);
+    this.gen++;
     this.root.setEnabled(true);
     this.root.scaling.setAll(0.55);
     this.root.rotationQuaternion = start.clone();
@@ -128,10 +129,22 @@ export class WorldDice {
     this.root.position.y = landY;
   }
 
+  /** A throw started after a hide was requested cancels that hide. */
+  private gen = 0;
+
   hide(delay = 1.2) {
-    void this.tween.wait(delay).then(() =>
-      this.tween.tween(0.25, (t) => this.root.scaling.setAll(0.55 * (1 - t))).then(() => this.root.setEnabled(false)),
-    );
+    if (!this.root.isEnabled()) return;
+    const gen = this.gen;
+    if (delay <= 0) {
+      this.root.setEnabled(false);
+      return;
+    }
+    void this.tween.wait(delay).then(() => {
+      if (gen !== this.gen) return;
+      return this.tween
+        .tween(0.25, (t) => gen === this.gen && this.root.scaling.setAll(0.55 * (1 - t)))
+        .then(() => gen === this.gen && this.root.setEnabled(false));
+    });
   }
 
   dispose() {

@@ -400,6 +400,7 @@ def hero_catalog() -> list[dict]:
                     "slot": a.slot,
                     "cost": a.cost,
                     "targeting": a.targeting,
+                    "effect": a.effect,
                     "description": a.description,
                     "params": a.params,
                 }

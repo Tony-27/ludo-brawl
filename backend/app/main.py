@@ -32,7 +32,12 @@ def create_app(
     settings = settings or get_settings()
     db = Database(settings.database_url)
     service = room_service or RoomService(
-        Timings(bot_delay=settings.bot_delay, turn_timeout=settings.turn_timeout, room_idle_ttl=settings.room_ttl)
+        Timings(
+            bot_delay=settings.bot_delay,
+            turn_timeout=settings.turn_timeout,
+            act_timeout=settings.act_timeout,
+            room_idle_ttl=settings.room_ttl,
+        )
     )
     hub = realtime.Hub(service)
     background: set[asyncio.Task] = set()

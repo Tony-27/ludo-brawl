@@ -1,4 +1,5 @@
 # Local stack: Postgres + the game server (API + built client) on http://localhost:8000
+# (another port: PORT=8080 docker compose up --build)
 #   docker compose up --build
 # For frontend development run `npm start` in frontend/ instead (proxies to :8000).
 services:
@@ -8,7 +9,7 @@ services:
       POSTGRES_USER: ludo
       POSTGRES_PASSWORD: ludo
       POSTGRES_DB: ludo
-    ports: ["5432:5432"]
+    ports: ["127.0.0.1:${DB_PORT:-5432}:5432"]
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ludo"]
@@ -19,7 +20,7 @@ services:
     build: .
     environment:
       LUDO_DATABASE_URL: postgresql+asyncpg://ludo:ludo@db:5432/ludo
-    ports: ["8000:8000"]
+    ports: ["${PORT:-8000}:8000"]
     depends_on:
       db: { condition: service_healthy }
 

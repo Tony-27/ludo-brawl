@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from ..game.board import Color
 from ..game.events import GameEvent
 
-PROTOCOL_VERSION = 1
+PROTOCOL_VERSION = 2
 
 
 # ---------------------------------------------------------------- views
@@ -31,22 +31,38 @@ class PlayerView(BaseModel):
 class TeamView(BaseModel):
     hero: str
     pieces: list[int]
-    lanes: list[int]
+    tiles: list[str | None]  # node each piece stands on (None in camp)
+    finished: list[bool]
+    remaining: list[int]  # steps left to the goal along the piece's chosen route
     mana: int
     maxMana: int
     finish: int
     ultUsed: bool
+    empowered: bool
     statuses: list[list[str]]
+
+
+class RouteView(BaseModel):
+    """The branch a move enters (route preview at a fork)."""
+
+    region: str
+    name: str
+    tag: str
+    length: int
+    shortest: int
 
 
 class MoveOptionView(BaseModel):
     piece: int
-    lane: int | None
+    lane: int | None  # branch index when the move enters a fork region
     to: int
+    tile: str
+    path: list[str]
+    route: RouteView | None
 
 
 class TileView(BaseModel):
-    effect: Literal["broken", "crater", "fire", "trap"]
+    effect: Literal["broken", "cracked", "crater", "fire", "trap", "warning", "water"]
     turns: int | None
     owner: Color | None
 
@@ -55,8 +71,9 @@ class MatchView(BaseModel):
     mapId: str
     turnOrder: list[Color]
     current: Color
-    phase: Literal["roll", "move", "over"]
+    phase: Literal["roll", "move", "act", "over"]
     turn: int
+    round: int
     lastRoll: int | None
     legalPieces: list[int]
     moveOptions: list[MoveOptionView]
@@ -64,6 +81,7 @@ class MatchView(BaseModel):
     castTargets: dict[str, list[dict]]
     ranking: list[Color]
     tiles: dict[str, TileView]
+    conveyor: int
     teams: dict[Color, TeamView]
     turnTimeLeftMs: int | None = None
 
@@ -97,13 +115,19 @@ class RollCommand(BaseModel):
 class MoveCommand(BaseModel):
     type: Literal["move"]
     piece: int = Field(ge=0, le=7)
-    lane: int | None = Field(default=None, ge=0, le=1)
+    lane: int | None = Field(default=None, ge=0, le=3)
 
 
 class CastCommand(BaseModel):
     type: Literal["cast"]
     ability: str
     target: dict
+
+
+class EndTurnCommand(BaseModel):
+    """Skip the after-move cast window."""
+
+    type: Literal["endTurn"]
 
 
 class PracticeCommand(BaseModel):
@@ -123,7 +147,7 @@ class ResyncCommand(BaseModel):
 
 
 ClientMessage = Annotated[
-    RollCommand | MoveCommand | CastCommand | PracticeCommand | PingCommand | ResyncCommand,
+    RollCommand | MoveCommand | CastCommand | EndTurnCommand | PracticeCommand | PingCommand | ResyncCommand,
     Field(discriminator="type"),
 ]
 

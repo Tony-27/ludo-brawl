@@ -47,6 +47,15 @@ export class LobbyView {
       crumble: 'crumbling bridges',
       current: 'currents',
       forks: 'forked paths',
+      branches: '3 routes per quarter',
+      conveyor: 'flipping conveyors',
+      anvil: 'forge anvils',
+      eruption: 'eruptions every 3 rounds',
+      ice: 'ice sheets',
+      thin_ice: 'thin ice',
+      spring: 'hot springs',
+      freeze: 'frozen-lake shortcut',
+      avalanche: 'avalanches',
     };
     return labels[f] ?? f;
   }

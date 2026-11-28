@@ -50,6 +50,8 @@ function distToSegment2(px: number, pz: number, ax: number, az: number, bx: numb
   return Math.hypot(px - cx, pz - cz);
 }
 
+export type TileFx = 'broken' | 'cracked' | 'crater' | 'fire' | 'trap' | 'warning' | 'water' | 'none';
+
 export interface World {
   /** Average distance between trail tiles. */
   spacing: number;
@@ -59,9 +61,13 @@ export interface World {
   groundY(x: number, z: number): number;
   setTurnColor(color: Color | null): void;
   /** Show or clear a live tile effect (crater, fire, trap, collapsed bridge). */
-  setTileEffect(nodeId: string, effect: 'broken' | 'crater' | 'fire' | 'trap' | 'none', visible?: boolean): void;
+  setTileEffect(nodeId: string, effect: TileFx, visible?: boolean): void;
+  /** Conveyors point forwards (1) or backwards (-1). */
+  setConveyor(direction: number): void;
   /** Glowing, clickable markers on tiles (spell targets, lane choices). */
   highlightTiles(nodeIds: string[], rgb: [number, number, number]): void;
+  /** Thin, non-clickable rings: tiles a spell would hit or a move would walk. */
+  previewTiles(nodeIds: string[], rgb: [number, number, number]): void;
   update(dt: number, t: number): void;
   dispose(): void;
 }
@@ -72,6 +78,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   const rand = mulberry32(data.id.split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7));
   const root = new TransformNode('world', scene);
   const forge = data.theme === 'forge';
+  const frost = data.theme === 'frost';
   const wilds = data.theme !== 'arena'; // the big outdoor maps
   const bounds = data.bounds;
 
@@ -85,6 +92,12 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     scene.clearColor = new Color4(0.25, 0.1, 0.07, 1);
     scene.fogDensity = 0.011;
     scene.fogColor = new Color3(0.33, 0.16, 0.11);
+  }
+  if (frost) {
+    scene.clearColor = new Color4(0.16, 0.22, 0.36, 1);
+    scene.fogDensity = 0.0095;
+    scene.fogColor = new Color3(0.5, 0.6, 0.76);
+    scene.ambientColor = new Color3(0.3, 0.34, 0.42);
   }
 
   const sky = MeshBuilder.CreateBox('sky', { size: 900 }, scene);
@@ -103,6 +116,14 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     skyMat.luminance = 0.55;
     skyMat.rayleigh = 3.5;
     skyMat.inclination = 0.47;
+  }
+  if (frost) {
+    // Polar twilight: a deep blue sky for the aurora to glow in.
+    skyMat.turbidity = 2.5;
+    skyMat.luminance = 0.75;
+    skyMat.rayleigh = 2.8;
+    skyMat.inclination = 0.488;
+    skyMat.azimuth = 0.2;
   }
   sky.material = skyMat;
   sky.infiniteDistance = true;
@@ -124,6 +145,13 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     sun.intensity = 1.25;
     hemi.diffuse = new Color3(1, 0.75, 0.6);
     hemi.groundColor = new Color3(0.45, 0.16, 0.08);
+  }
+  if (frost) {
+    sun.diffuse = new Color3(0.86, 0.9, 1);
+    sun.intensity = 1.2;
+    hemi.diffuse = new Color3(0.78, 0.86, 1);
+    hemi.groundColor = new Color3(0.55, 0.6, 0.72); // light bouncing off the snow
+    hemi.intensity = 0.62;
   }
   sun.shadowMinZ = 1;
   sun.shadowMaxZ = 160;
@@ -159,6 +187,9 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     return best;
   };
   const campDist = (x: number, z: number) => Math.min(...campCenters.map((c) => Math.hypot(x - c[0], z - c[2])));
+  const lakes = data.lakes ?? [];
+  const lakeDist = (x: number, z: number) =>
+    lakes.reduce((best, l) => Math.min(best, Math.hypot(x - l.center[0], z - l.center[1]) - l.radius), Infinity);
 
   const groundY = (x: number, z: number) => {
     const r = Math.hypot(x, z);
@@ -167,6 +198,8 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     h += Math.max(0, r - bounds * 0.95) * 0.35;
     const rd = riverDist(x, z);
     if (rd < 1.6) h = Math.min(h, -0.75 + Math.max(0, rd) * 0.4);
+    const ld = lakeDist(x, z);
+    if (ld < 1.2) h = Math.min(h, -0.35 + Math.max(0, ld) * 0.3);
     const pd = pathDist(x, z);
     if (pd < 1.3) h = h * (pd / 1.3) - 0.12 * (1 - pd / 1.3);
     const cd = campDist(x, z);
@@ -183,9 +216,10 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   const biomeColor = (x: number, z: number): [number, number, number] => {
     if (!wilds) return [0.36, 0.55, 0.26];
     if (forge) return [0.16, 0.13, 0.12];
+    if (frost) return [0.84, 0.89, 0.96];
     const a = Math.atan2(-z, x);
     // Rough biome by angle around the loop, matching map zones.
-    const idx = Math.floor(((Math.PI * 0.75 - a + Math.PI * 4) % (Math.PI * 2)) / (Math.PI * 2) * data.loop.length);
+    const idx = Math.floor(((Math.PI * 0.75 - a + Math.PI * 4) % (Math.PI * 2)) / (Math.PI * 2) * layout.loopLength);
     const biome = layout.biomeAt(idx);
     return biome === 'forest' ? [0.3, 0.5, 0.24] : biome === 'ruins' ? [0.52, 0.55, 0.3] : [0.2, 0.5, 0.22];
   };
@@ -208,13 +242,14 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     const pd = pathDist(x, z);
     if (pd < 1.1) {
       const k = 1 - pd / 1.1;
-      const dirt = forge ? [0.3, 0.27, 0.25] : [0.45, 0.36, 0.24]; // ash or trodden dirt
+      const dirt = forge ? [0.3, 0.27, 0.25] : frost ? [0.66, 0.72, 0.82] : [0.45, 0.36, 0.24]; // ash, packed snow or dirt
       [r, g, b] = [r + (dirt[0] - r) * k * 0.8, g + (dirt[1] - g) * k * 0.8, b + (dirt[2] - b) * k * 0.8];
     }
-    if (y > 2.5) {
+    if (y > 2.5 && !frost) {
       const k = Math.min(1, (y - 2.5) / 3);
       [r, g, b] = [r + (0.5 - r) * k, g + (0.5 - g) * k, b + (0.48 - b) * k];
     }
+    if (frost && lakeDist(x, z) < 0.8) [r, g, b] = [0.42, 0.6, 0.76];
     colors.push(r, g, b, 1);
   }
   ground.updateVerticesData(VertexBuffer.PositionKind, pos);
@@ -282,7 +317,28 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     ribbon.parent = root;
     waterMeshes.push(ribbon);
   }
-  // A moat-like lake ring is implied by the rivers meeting the temple plateau.
+  // Frozen lakes: a glossy ice sheet that turns to open water when it thaws (per tile, see 'water').
+  const iceMat = new StandardMaterial('ice', scene);
+  iceMat.diffuseColor = new Color3(0.72, 0.86, 0.96);
+  iceMat.specularColor = new Color3(0.9, 0.95, 1);
+  iceMat.specularPower = 96;
+  iceMat.emissiveColor = new Color3(0.05, 0.08, 0.12);
+  const lakeMat = new StandardMaterial('lakeIce', scene);
+  lakeMat.diffuseColor = new Color3(0.32, 0.55, 0.74);
+  lakeMat.specularColor = new Color3(0.7, 0.8, 0.9);
+  lakeMat.specularPower = 128;
+  lakeMat.emissiveColor = new Color3(0.02, 0.05, 0.09);
+  lakeMat.bumpTexture = waterTex.clone();
+  lakeMat.bumpTexture.level = 0.15;
+  for (const l of lakes) {
+    const disc = MeshBuilder.CreateDisc('lake', { radius: l.radius, tessellation: 48 }, scene);
+    disc.material = lakeMat;
+    disc.rotation.x = Math.PI / 2;
+    disc.position.set(l.center[0], -0.2, l.center[1]);
+    disc.isPickable = false;
+    disc.receiveShadows = true;
+    disc.parent = root;
+  }
 
   // ------------------------------------------------------------------ trail tiles
   const stoneColors = [new Color3(0.62, 0.6, 0.56), new Color3(0.56, 0.55, 0.52), new Color3(0.68, 0.65, 0.58)];
@@ -336,11 +392,9 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   }
   const routeOwner = new Map<string, Color>();
   for (const c of TEAMS) {
-    (data.routes[c] ?? []).forEach((step, i) => {
-      for (const id of Array.isArray(step) ? step : [step]) {
-        const n = layout.nodes.get(id)!;
-        if (n.kind === 'home' || n.kind === 'goal' || (n.kind === 'start' && i === 0)) routeOwner.set(id, c);
-      }
+    layout.mainPath(c).forEach((id, i) => {
+      const n = layout.nodes.get(id)!;
+      if (n.kind === 'home' || n.kind === 'goal' || (n.kind === 'start' && i === 0)) routeOwner.set(id, c);
     });
   }
 
@@ -386,9 +440,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
       deck.material = plank;
       mesh = deck;
       mesh.position.set(x, y - 0.06, z);
-      const li = layout.loopIndex.get(n.id) ?? 0;
-      const nextStep = data.loop[(li + 1) % data.loop.length];
-      const next = layout.nodes.get(Array.isArray(nextStep) ? nextStep[Math.min(n.lane ?? 0, 1)] : nextStep);
+      const next = layout.next(n.id);
       if (next) mesh.lookAt(new Vector3(next.pos[0], y - 0.06, next.pos[2]));
       // Rope posts.
       for (const side of [-1, 1]) {
@@ -398,6 +450,13 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
         post.position.set(side * tileScale * 0.55, 0.3, 0);
         shadows.addShadowCaster(post);
       }
+    } else if (n.lake) {
+      // Lake tiles are slabs of ice.
+      const slab = MeshBuilder.CreateCylinder(`ice_${n.id}`, { diameter: tileScale * 1.05, height: 0.14, tessellation: 7 }, scene);
+      slab.material = iceMat;
+      mesh = slab;
+      mesh.position.set(x, y - 0.05, z);
+      mesh.rotation.y = rand() * Math.PI;
     } else {
       const variant = rockVariants[Math.floor(rand() * rockVariants.length)];
       const owner = routeOwner.get(n.id);
@@ -447,6 +506,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     }
   }
 
+  const ambientSystems: ParticleSystem[] = [];
   // ------------------------------------------------------------------ hazards
   const glowTex = new DynamicTexture('hazardGlow', { width: 64, height: 64 }, scene, false);
   {
@@ -479,12 +539,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     t.wrapU = Texture.WRAP_ADDRESSMODE;
     return t;
   };
-  const neighbour = (n: MapNode, delta: number) => {
-    const li = layout.loopIndex.get(n.id);
-    if (li === undefined) return null;
-    const step = data.loop[(li + delta + data.loop.length) % data.loop.length];
-    return layout.nodes.get(Array.isArray(step) ? step[Math.min(n.lane ?? 0, 1)] : step) ?? null;
-  };
+  const neighbour = (n: MapNode, delta: number) => (delta >= 0 ? layout.next(n.id) : layout.prev(n.id));
   const animated: { mesh: Mesh; spin?: number; scroll?: number; pulse?: number }[] = [];
   const makeMat = (name: string, rgb: [number, number, number], emissive = 1, alpha = 1) => {
     const m = new StandardMaterial(name, scene);
@@ -513,6 +568,34 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     for (const m of [hole, rim]) m.isPickable = false;
     return node;
   };
+  const conveyors: { plane: Mesh; base: number }[] = [];
+  const glossy = (tile: AbstractMesh, name: string, rgb: [number, number, number]) => {
+    const m = new StandardMaterial(name, scene);
+    m.diffuseColor = new Color3(...rgb);
+    m.specularColor = new Color3(0.9, 0.95, 1);
+    m.specularPower = 80;
+    m.emissiveColor = new Color3(rgb[0] * 0.18, rgb[1] * 0.22, rgb[2] * 0.28);
+    if (tile instanceof Mesh || 'sourceMesh' in tile) {
+      // Instances share their source's material: swap in a dedicated clone.
+      const src = (tile as unknown as { sourceMesh?: Mesh }).sourceMesh;
+      if (src) {
+        const clone = src.clone(`${name}_tile`, root)!;
+        clone.isVisible = true;
+        clone.position.copyFrom(tile.position);
+        clone.rotation.copyFrom(tile.rotation);
+        clone.scaling.copyFrom(tile.scaling);
+        clone.metadata = tile.metadata;
+        clone.receiveShadows = true;
+        clone.material = m;
+        tileByNode.set(tile.metadata.nodeId, clone);
+        tileMeshes.push(clone);
+        tile.dispose();
+        return clone;
+      }
+    }
+    tile.material = m;
+    return tile;
+  };
   for (const n of data.nodes) {
     const hz = n.hazard;
     if (!hz) continue;
@@ -538,6 +621,83 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
       plane.isPickable = false;
       plane.parent = root;
       animated.push({ mesh: plane, scroll: -0.8 });
+    } else if (hz.type === 'conveyor') {
+      const toward = neighbour(n, 1);
+      const plane = MeshBuilder.CreatePlane(`conveyor_${n.id}`, { width: tileScale * 0.85, height: tileScale * 0.6 }, scene);
+      const mat = new StandardMaterial(`conveyorMat_${n.id}`, scene);
+      mat.diffuseTexture = chevronTex('#ffb347');
+      mat.opacityTexture = mat.diffuseTexture;
+      mat.emissiveColor = Color3.FromHexString('#ffb347');
+      mat.disableLighting = true;
+      plane.material = mat;
+      plane.position.set(x, y + 0.03, z);
+      plane.rotation.x = Math.PI / 2;
+      const base = toward ? Math.atan2(toward.pos[0] - x, toward.pos[2] - z) - Math.PI / 2 : 0;
+      plane.rotation.y = base;
+      plane.isPickable = false;
+      plane.parent = root;
+      conveyors.push({ plane, base });
+      animated.push({ mesh: plane, scroll: -1.2 });
+      if (tile) glossy(tile, `belt_${n.id}`, [0.28, 0.26, 0.25]);
+    } else if (hz.type === 'ice' && tile) {
+      glossy(tile, `iceTile_${n.id}`, [0.74, 0.88, 1]);
+    } else if (hz.type === 'thin_ice' && tile && !n.lake) {
+      glossy(tile, `thinIce_${n.id}`, [0.82, 0.92, 1]);
+    } else if (hz.type === 'spring') {
+      const pool = MeshBuilder.CreateDisc(`spring_${n.id}`, { radius: tileScale * 0.4, tessellation: 28 }, scene);
+      pool.material = makeMat(`springMat_${n.id}`, [0.25, 0.85, 0.8], 0.55, 0.85);
+      pool.rotation.x = Math.PI / 2;
+      pool.position.set(x, y + 0.03, z);
+      pool.isPickable = false;
+      pool.parent = root;
+      animated.push({ mesh: pool, pulse: 1 });
+      const steam = new ParticleSystem(`steam_${n.id}`, 40, scene);
+      steam.particleTexture = glowTex;
+      steam.emitter = new Vector3(x, y + 0.1, z);
+      steam.minEmitBox = new Vector3(-0.25, 0, -0.25);
+      steam.maxEmitBox = new Vector3(0.25, 0, 0.25);
+      steam.color1 = new Color4(1, 1, 1, 0.35);
+      steam.color2 = new Color4(0.85, 0.95, 1, 0.25);
+      steam.colorDead = new Color4(1, 1, 1, 0);
+      steam.minSize = 0.3;
+      steam.maxSize = 0.7;
+      steam.minLifeTime = 1.2;
+      steam.maxLifeTime = 2.4;
+      steam.emitRate = 14;
+      steam.direction1 = new Vector3(-0.1, 1, -0.1);
+      steam.direction2 = new Vector3(0.1, 1.4, 0.1);
+      steam.minEmitPower = 0.3;
+      steam.maxEmitPower = 0.6;
+      steam.blendMode = ParticleSystem.BLENDMODE_STANDARD;
+      steam.start();
+      ambientSystems.push(steam);
+    } else if (hz.type === 'anvil') {
+      const anvil = new TransformNode(`anvil_${n.id}`, scene);
+      anvil.parent = root;
+      anvil.position.set(x, y + 0.02, z);
+      const metal = makeMat(`anvilMat_${n.id}`, [0.2, 0.2, 0.22], 0.1);
+      metal.specularColor = new Color3(0.6, 0.6, 0.6);
+      const foot = MeshBuilder.CreateBox(`anvilFoot_${n.id}`, { width: 0.34, height: 0.16, depth: 0.22 }, scene);
+      const top = MeshBuilder.CreateBox(`anvilTop_${n.id}`, { width: 0.6, height: 0.12, depth: 0.26 }, scene);
+      const horn = MeshBuilder.CreateCylinder(`anvilHorn_${n.id}`, { height: 0.24, diameterTop: 0, diameterBottom: 0.12, tessellation: 8 }, scene);
+      foot.position.y = 0.08;
+      top.position.y = 0.22;
+      horn.position.set(0.4, 0.22, 0);
+      horn.rotation.z = -Math.PI / 2;
+      for (const m of [foot, top, horn]) {
+        m.material = metal;
+        m.parent = anvil;
+        m.isPickable = false;
+        shadows.addShadowCaster(m);
+      }
+      const glow = MeshBuilder.CreateTorus(`anvilGlow_${n.id}`, { diameter: tileScale * 0.85, thickness: 0.05, tessellation: 32 }, scene);
+      glow.material = makeMat(`anvilGlowMat_${n.id}`, [1, 0.55, 0.15], 1);
+      glow.position.set(x, y + 0.02, z);
+      glow.isPickable = false;
+      glow.parent = root;
+      animated.push({ mesh: glow, pulse: 1 });
+      anvil.position.x += tileScale * 0.22;
+      anvil.position.z += tileScale * 0.1;
     } else if (hz.type === 'portal') {
       const ring = MeshBuilder.CreateTorus(`portal_${n.id}`, { diameter: tileScale * 0.9, thickness: 0.1, tessellation: 40 }, scene);
       ring.material = makeMat(`portalMat_${n.id}`, [0.7, 0.35, 1], 1);
@@ -560,7 +720,56 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     }
   }
 
-  // Live tile effects (craters, fire, traps, collapsed bridges).
+  // Live tile effects (craters, fire, traps, collapsed bridges, warnings, thawed ice).
+  const crackTex = new DynamicTexture('cracks', { width: 128, height: 128 }, scene, true);
+  {
+    const g = crackTex.getContext() as CanvasRenderingContext2D;
+    g.clearRect(0, 0, 128, 128);
+    g.strokeStyle = 'rgba(255,255,255,0.95)';
+    g.lineWidth = 3;
+    const crack = (x: number, y: number, a: number, len: number, depth: number) => {
+      const x2 = x + Math.cos(a) * len;
+      const y2 = y + Math.sin(a) * len;
+      g.beginPath();
+      g.moveTo(x, y);
+      g.lineTo(x2, y2);
+      g.stroke();
+      if (depth > 0) {
+        crack(x2, y2, a + 0.6, len * 0.6, depth - 1);
+        crack(x2, y2, a - 0.5, len * 0.7, depth - 1);
+      }
+    };
+    for (let k = 0; k < 5; k++) crack(64, 64, (k / 5) * Math.PI * 2 + 0.3, 22, 2);
+    crackTex.hasAlpha = true;
+    crackTex.update();
+  }
+  const crackMat = new StandardMaterial('crackMat', scene);
+  crackMat.diffuseTexture = crackTex;
+  crackMat.opacityTexture = crackTex;
+  crackMat.emissiveColor = forge ? new Color3(1, 0.45, 0.1) : new Color3(0.9, 0.95, 1);
+  crackMat.disableLighting = true;
+  const warnRgb: [number, number, number] = frost ? [0.85, 0.95, 1] : [1, 0.3, 0.08];
+  const warnMat = makeMat('warnMat', warnRgb, 1, 0.85);
+  const bangTex = new DynamicTexture('bang', { width: 128, height: 128 }, scene, true);
+  {
+    const g = bangTex.getContext() as CanvasRenderingContext2D;
+    g.clearRect(0, 0, 128, 128);
+    g.fillStyle = frost ? '#e6f6ff' : '#ff5a1f';
+    g.shadowColor = g.fillStyle;
+    g.shadowBlur = 18;
+    g.font = 'bold 110px sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('!', 64, 70);
+    bangTex.hasAlpha = true;
+    bangTex.update();
+  }
+  const bangMat = new StandardMaterial('bangMat', scene);
+  bangMat.diffuseTexture = bangTex;
+  bangMat.opacityTexture = bangTex;
+  bangMat.emissiveColor = new Color3(1, 1, 1);
+  bangMat.disableLighting = true;
+  const openWater = makeMat('openWater', [0.1, 0.35, 0.5], 0.25, 0.92);
   const overlays = new Map<string, { node: TransformNode; ps?: ParticleSystem }>();
   const fireAt = (x: number, y: number, z: number, smoke = false) => {
     const ps = new ParticleSystem('tileFire', smoke ? 60 : 120, scene);
@@ -589,6 +798,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     const o = overlays.get(id);
     if (!o) return;
     o.ps?.dispose();
+    for (let i = animated.length - 1; i >= 0; i--) if (animated[i].mesh.isDescendantOf(o.node)) animated.splice(i, 1);
     o.node.dispose(false, false);
     overlays.delete(id);
   };
@@ -601,7 +811,44 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     tile?.setEnabled(!staticPit);
     if (effect === 'none' || !visible) return;
     const [x, y, z] = n.pos;
-    if (effect === 'crater' || effect === 'broken') {
+    if (effect === 'water') {
+      tile?.setEnabled(false);
+      const node = new TransformNode(`water_${id}`, scene);
+      node.parent = root;
+      const pool = MeshBuilder.CreateDisc(`waterDisc_${id}`, { radius: tileScale * 0.6, tessellation: 24 }, scene);
+      pool.material = openWater;
+      pool.rotation.x = Math.PI / 2;
+      pool.position.set(x, y - 0.12, z);
+      pool.isPickable = false;
+      pool.parent = node;
+      overlays.set(id, { node });
+    } else if (effect === 'cracked') {
+      const node = new TransformNode(`cracked_${id}`, scene);
+      node.parent = root;
+      const decal = MeshBuilder.CreatePlane(`crack_${id}`, { size: tileScale * 0.9 }, scene);
+      decal.material = crackMat;
+      decal.rotation.x = Math.PI / 2;
+      decal.position.set(x, y + 0.04, z);
+      decal.isPickable = false;
+      decal.parent = node;
+      overlays.set(id, { node });
+    } else if (effect === 'warning') {
+      const node = new TransformNode(`warn_${id}`, scene);
+      node.parent = root;
+      const ring = MeshBuilder.CreateTorus(`warnRing_${id}`, { diameter: tileScale * 1.1, thickness: 0.08, tessellation: 32 }, scene);
+      ring.material = warnMat;
+      ring.position.set(x, y + 0.05, z);
+      ring.isPickable = false;
+      ring.parent = node;
+      animated.push({ mesh: ring, pulse: 3 });
+      const bang = MeshBuilder.CreatePlane(`bang_${id}`, { size: 0.7 }, scene);
+      bang.material = bangMat;
+      bang.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      bang.position.set(x, y + 1.3, z);
+      bang.isPickable = false;
+      bang.parent = node;
+      overlays.set(id, { node, ps: forge ? fireAt(x, y - 0.1, z, true) : undefined });
+    } else if (effect === 'crater' || effect === 'broken') {
       tile?.setEnabled(false);
       const pit = makePit(`fx_${id}`, x, y, z);
       overlays.set(id, { node: pit, ps: fireAt(x, y - 0.1, z, true) });
@@ -639,6 +886,23 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
       ring.isPickable = true;
       ring.metadata = { nodeId: id, highlight: true };
       highlights.push(ring);
+    }
+  };
+
+  let previews: Mesh[] = [];
+  const previewMat = makeMat('preview', [1, 0.45, 0.3], 1, 0.75);
+  const previewTiles: World['previewTiles'] = (ids, rgb) => {
+    for (const h of previews) h.dispose();
+    previews = [];
+    previewMat.emissiveColor = new Color3(...rgb);
+    for (const id of new Set(ids)) {
+      const n = layout.nodes.get(id);
+      if (!n) continue;
+      const ring = MeshBuilder.CreateTorus(`pv_${id}`, { diameter: tileScale * 0.8, thickness: 0.06, tessellation: 24 }, scene);
+      ring.material = previewMat;
+      ring.position.set(n.pos[0], n.pos[1] + 0.09, n.pos[2]);
+      ring.isPickable = false;
+      previews.push(ring);
     }
   };
 
@@ -683,6 +947,20 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   heart.parent = root;
 
   // ------------------------------------------------------------------ camps
+  const snowy = new Map<string, StandardMaterial>();
+  const snowTint = (m: AbstractMesh) => {
+    const mat = m.material as StandardMaterial | null;
+    if (!mat || !('diffuseColor' in mat)) return;
+    let s2 = snowy.get(mat.uniqueId.toString());
+    if (!s2) {
+      s2 = mat.clone(`${mat.name}_snow`) as StandardMaterial;
+      const pbr = s2 as unknown as { albedoColor?: Color3 };
+      const base = pbr.albedoColor ?? s2.diffuseColor;
+      if (base) Color3.LerpToRef(base, new Color3(0.93, 0.96, 1), 0.62, base);
+      snowy.set(mat.uniqueId.toString(), s2);
+    }
+    m.material = s2;
+  };
   const placeModel = async (path: string, at: Vector3, scale: number, rotY = 0, castShadow = true) => {
     try {
       const container = await assets.load(path);
@@ -695,6 +973,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
       node.rotation.y = rotY;
       node.parent = root;
       for (const m of node.getChildMeshes()) {
+        if (frost) snowTint(m);
         m.isPickable = false;
         m.receiveShadows = true;
         if (castShadow) shadows.addShadowCaster(m);
@@ -761,7 +1040,54 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     riverDist(x, z) < 0.6 ||
     campDist(x, z) < 5 ||
     Math.hypot(x, z) < (wilds ? 6.5 : 3.2) ||
+    lakeDist(x, z) < 0.8 ||
     inSightline(x, z);
+
+  // Snowy pines, built procedurally and instanced.
+  function scatterPines(count: number) {
+    const bark = makeMat('pineBark', [0.3, 0.2, 0.13], 0);
+    const needles = makeMat('pineNeedles', [0.1, 0.27, 0.2], 0.02);
+    const snowMat = makeMat('pineSnow', [0.93, 0.96, 1], 0.08);
+    const parts: Mesh[] = [];
+    const trunk = MeshBuilder.CreateCylinder('pineTrunk', { height: 0.9, diameter: 0.22, tessellation: 6 }, scene);
+    trunk.position.y = 0.45;
+    trunk.material = bark;
+    parts.push(trunk);
+    for (let k = 0; k < 3; k++) {
+      const h = 1.3 - k * 0.25;
+      const d = 1.7 - k * 0.45;
+      const cone = MeshBuilder.CreateCylinder(`pineCone${k}`, { height: h, diameterTop: 0, diameterBottom: d, tessellation: 7 }, scene);
+      cone.position.y = 0.9 + k * 0.62 + h / 2;
+      cone.material = needles;
+      const cap = MeshBuilder.CreateCylinder(`pineCap${k}`, { height: h * 0.45, diameterTop: 0, diameterBottom: d * 0.52, tessellation: 7 }, scene);
+      cap.position.y = cone.position.y + h * 0.3;
+      cap.material = snowMat;
+      parts.push(cone, cap);
+    }
+    const pine = Mesh.MergeMeshes(parts, true, true, undefined, false, true)!;
+    pine.name = 'pine';
+    pine.isPickable = false;
+    pine.parent = root;
+    pine.isVisible = false;
+    let placed = 0;
+    for (let tries = 0; placed < count && tries < count * 12; tries++) {
+      const a = rand() * Math.PI * 2;
+      const d = 6 + Math.sqrt(rand()) * (bounds * 1.3 - 6);
+      const x = Math.cos(a) * d;
+      const z = Math.sin(a) * d;
+      if (nearSomething(x, z, 1.5)) continue;
+      placed++;
+      const inst = pine.createInstance(`pine${placed}`);
+      const sc = 0.8 + rand() * 0.9;
+      inst.position.set(x, groundY(x, z) - 0.05, z);
+      inst.scaling.set(sc, sc * (0.9 + rand() * 0.3), sc);
+      inst.rotation.y = rand() * Math.PI * 2;
+      inst.parent = root;
+      inst.isPickable = false;
+      shadows.addShadowCaster(inst);
+      inst.freezeWorldMatrix();
+    }
+  }
 
   const scatter = async (paths: string[], count: number, minR: number, maxR: number, scale: [number, number], clear: number, shadow = true) => {
     const jobs: Promise<unknown>[] = [];
@@ -782,16 +1108,17 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
 
   const treeSet = forge ? ENV.rocks : wilds ? [...ENV.trees['jungle'], ...ENV.trees['forest']] : ENV.trees['arena'];
   const treeCount = quality === 'high' ? (wilds ? 260 : 90) : wilds ? 150 : 60;
+  if (frost) scatterPines(quality === 'high' ? 320 : 180);
   await Promise.all([
     ...pedestalTasks,
     placeModel(wilds ? ENV.ruins : ENV.stage, new Vector3(0, goalY - 0.05, 0), wilds ? 1.0 : 0.7, 0),
-    scatter(treeSet, treeCount, wilds ? 6 : 9, bounds * 1.25, [1.0, 1.8], 1.4),
+    frost ? Promise.resolve() : scatter(treeSet, treeCount, wilds ? 6 : 9, bounds * 1.25, [1.0, 1.8], 1.4),
     scatter(ENV.rocks, wilds ? 70 : 30, 4, bounds * 1.2, [0.8, 2.0], 1.2),
     scatter(ENV.hills, wilds ? 14 : 6, bounds * 1.5, bounds * 1.9, [2.0, 3.2], 3, false),
     scatter(ENV.mountains, wilds ? 16 : 10, bounds * 1.9, bounds * 2.4, [4, 7], 4, false),
   ]);
   // Water plants along the banks.
-  for (const r of rivers) {
+  for (const r of frost ? [] : rivers) {
     for (const [x, z] of r.points) {
       if (rand() < 0.6 && pathDist(x, z) > 2) {
         void placeModel(ENV.waterPlants[Math.floor(rand() * ENV.waterPlants.length)], new Vector3(x + (rand() - 0.5) * r.width * 0.6, -0.42, z + (rand() - 0.5) * r.width * 0.6), 0.9, rand() * 6, false);
@@ -833,6 +1160,57 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     birds.push({ node, left: mk(-1), right: mk(1), r: 8 + rand() * bounds, h: 7 + rand() * 7, speed: 0.15 + rand() * 0.2, phase: rand() * Math.PI * 2 });
   }
 
+  // Aurora: glowing curtains of light high in the polar sky.
+  const auroras: Mesh[] = [];
+  if (frost) {
+    const tex = new DynamicTexture('aurora', { width: 256, height: 128 }, scene, true);
+    const g = tex.getContext() as CanvasRenderingContext2D;
+    const grad = g.createLinearGradient(0, 128, 0, 0);
+    grad.addColorStop(0, 'rgba(80,255,170,0)');
+    grad.addColorStop(0.15, 'rgba(80,255,170,0.85)');
+    grad.addColorStop(0.55, 'rgba(70,200,255,0.45)');
+    grad.addColorStop(1, 'rgba(170,90,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 256, 128);
+    // Vertical rays.
+    g.globalCompositeOperation = 'destination-out';
+    for (let x = 0; x < 256; x += 3) {
+      g.fillStyle = `rgba(0,0,0,${0.15 + 0.5 * Math.abs(Math.sin(x * 0.21) * Math.sin(x * 0.047))})`;
+      g.fillRect(x, 0, 2, 128);
+    }
+    tex.hasAlpha = true;
+    tex.wrapU = Texture.WRAP_ADDRESSMODE;
+    tex.update();
+    for (let k = 0; k < 3; k++) {
+      const mat = new StandardMaterial(`auroraMat${k}`, scene);
+      mat.diffuseTexture = tex;
+      mat.opacityTexture = tex;
+      mat.emissiveColor = new Color3(1, 1, 1);
+      mat.disableLighting = true;
+      mat.backFaceCulling = false;
+      mat.fogEnabled = false;
+      mat.alpha = 0.7;
+      const bottom: Vector3[] = [];
+      const top: Vector3[] = [];
+      const R = 170 + k * 35;
+      const a0 = -0.4 + k * 1.9;
+      for (let i = 0; i <= 40; i++) {
+        const a = a0 + (i / 40) * 2.2;
+        const wave = Math.sin(i * 0.45 + k) * 14;
+        const x = Math.cos(a) * (R + wave);
+        const z = Math.sin(a) * (R + wave);
+        bottom.push(new Vector3(x, 55 + k * 8, z));
+        top.push(new Vector3(x * 1.05, 105 + k * 10 + Math.sin(i * 0.3) * 8, z * 1.05));
+      }
+      const ribbon = MeshBuilder.CreateRibbon(`aurora${k}`, { pathArray: [bottom, top] }, scene);
+      ribbon.material = mat;
+      ribbon.isPickable = false;
+      ribbon.infiniteDistance = false;
+      ribbon.parent = root;
+      auroras.push(ribbon);
+    }
+  }
+
   // Drifting pollen / fireflies.
   const motes = new ParticleSystem('motes', quality === 'high' ? 600 : 300, scene);
   const moteTex = new DynamicTexture('moteTex', { width: 32, height: 32 }, scene, false);
@@ -862,6 +1240,24 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   motes.minEmitPower = 0.1;
   motes.maxEmitPower = 0.3;
   motes.blendMode = ParticleSystem.BLENDMODE_ADD;
+  if (frost) {
+    // Falling snow instead of pollen.
+    motes.emitter = new Vector3(0, 16, 0);
+    motes.minEmitBox = new Vector3(-bounds * 1.3, 0, -bounds * 1.3);
+    motes.maxEmitBox = new Vector3(bounds * 1.3, 4, bounds * 1.3);
+    motes.color1 = new Color4(1, 1, 1, 0.95);
+    motes.color2 = new Color4(0.85, 0.92, 1, 0.8);
+    motes.minSize = 0.05;
+    motes.maxSize = 0.14;
+    motes.minLifeTime = 7;
+    motes.maxLifeTime = 11;
+    motes.emitRate = quality === 'high' ? 260 : 130;
+    motes.direction1 = new Vector3(-0.35, -1, -0.2);
+    motes.direction2 = new Vector3(0.35, -1.4, 0.2);
+    motes.minEmitPower = 1.1;
+    motes.maxEmitPower = 1.6;
+    motes.blendMode = ParticleSystem.BLENDMODE_STANDARD;
+  }
   motes.start();
 
   // ------------------------------------------------------------------ api
@@ -875,6 +1271,10 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     groundY,
     setTileEffect,
     highlightTiles,
+    previewTiles,
+    setConveyor(direction) {
+      for (const c of conveyors) c.plane.rotation.y = c.base + (direction < 0 ? Math.PI : 0);
+    },
     setTurnColor(color) {
       const rgb = color ? TEAM_RGB[color] : [1, 1, 1];
       heartTarget.set(rgb[0], rgb[1], rgb[2]);
@@ -886,7 +1286,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
       for (const a of animated) {
         if (a.spin) a.mesh.rotation.y += dt * a.spin;
         if (a.scroll) ((a.mesh.material as StandardMaterial).diffuseTexture as Texture).uOffset += dt * a.scroll;
-        if (a.pulse) a.mesh.scaling.setAll(1 + Math.sin(t * 3 + a.mesh.position.x) * 0.06);
+        if (a.pulse) a.mesh.scaling.setAll(1 + Math.sin(t * 3 * a.pulse + a.mesh.position.x) * 0.06 * a.pulse);
       }
       const hs = 1 + Math.sin(t * 6) * 0.08;
       for (const h of highlights) h.scaling.set(hs, 1, hs);
@@ -900,6 +1300,11 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
         s.position.y += Math.sin(t * 2 + s.position.x) * dt * 0.15;
       }
       for (const r of runes) (r.material as StandardMaterial).alpha = 0.75 + Math.sin(t * 2.2) * 0.25;
+      auroras.forEach((a, k) => {
+        const m = a.material as StandardMaterial;
+        (m.diffuseTexture as Texture).uOffset += dt * (0.008 + k * 0.004);
+        m.alpha = 0.45 + 0.3 * Math.sin(t * 0.35 + k * 1.7);
+      });
       for (const c of clouds) {
         c.position.x += dt * 0.25;
         if (c.position.x > bounds * 1.6) c.position.x = -bounds * 1.6;
@@ -915,6 +1320,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     },
     dispose() {
       motes.dispose();
+      for (const ps of ambientSystems) ps.dispose();
       root.dispose(false, true);
       hemi.dispose();
       sun.dispose();

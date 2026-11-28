@@ -543,3 +543,108 @@
     cursor: pointer;
   }
 }
+
+/* ---------------------------------------------------------------- spell reasons, die, end turn */
+.spell {
+  height: 98px;
+  &:disabled { opacity: 0.72; filter: grayscale(0.55); }
+  .why {
+    font-size: 0.62rem;
+    line-height: 1.15;
+    text-align: center;
+    padding: 0 6px;
+    color: #c8d6ff;
+    opacity: 0.9;
+    min-height: 1.4em;
+  }
+  &.ready .why { color: #8dffb0; }
+  &.noMana .why { color: #ff9a9a; }
+  &.used .why, &.spent .why { color: #ffd0a0; }
+}
+
+.roll:has(.die) {
+  opacity: 1;
+  filter: none;
+  background: linear-gradient(180deg, #fff6d8, #ffe07a);
+}
+.die {
+  width: 46px;
+  height: 46px;
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: inset 0 -3px 0 #d9cfae, 0 2px 6px #0005;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  padding: 6px;
+  gap: 2px;
+  margin-bottom: 4px;
+  i { border-radius: 50%; }
+  i.pip { background: #2a1f00; }
+}
+.roll.end {
+  color: #fff;
+  background: linear-gradient(180deg, #6fd3ff, #2c7fd6);
+  box-shadow: 0 6px 0 #1b5596, 0 12px 30px #0007;
+  animation: bounce 1.2s ease-in-out infinite;
+  span { font-size: 1.15rem; }
+}
+
+.my-mana {
+  .per-turn {
+    margin-left: 14px;
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #1d6b3a88;
+    color: #b8ffd0;
+    &.off { background: #6b1d1d88; color: #ffc0c0; }
+  }
+  .empowered {
+    padding: 2px 8px;
+    border-radius: 999px;
+    background: #7a3d0a99;
+    color: #ffd09a;
+  }
+}
+
+/* ---------------------------------------------------------------- route choice */
+.routes {
+  position: absolute;
+  left: 50%;
+  bottom: 190px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  z-index: 6;
+  .routes-title {
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-shadow: 0 2px 6px #000;
+  }
+}
+.route-cards {
+  display: flex;
+  gap: 10px;
+}
+.route {
+  position: relative;
+  width: 190px;
+  padding: 12px 14px 10px;
+  border-radius: 14px;
+  border: 2px solid #8dffb066;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  text-align: left;
+  transition: transform 0.12s, box-shadow 0.12s;
+  &:hover { transform: translateY(-3px); box-shadow: 0 0 20px #8dffb088; }
+  b { font-size: 1rem; }
+  .len { font-size: 0.8rem; color: #9fd4ff; font-weight: 700; }
+  .tag { font-size: 0.72rem; color: var(--muted); }
+  .key { position: absolute; top: 8px; right: 10px; font-size: 0.7rem; color: var(--muted); }
+}

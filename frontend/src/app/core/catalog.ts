@@ -7,6 +7,7 @@ export interface AbilityInfo {
   slot: 'basic' | 'utility' | 'ultimate';
   cost: number;
   targeting: 'ownPiece' | 'ownPieceSteps' | 'enemyPiece' | 'tile' | 'none';
+  effect: string;
   description: string;
   params: Record<string, number | boolean>;
 }

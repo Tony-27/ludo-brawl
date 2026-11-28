@@ -1,0 +1,23 @@
+# Caddy gets and renews the HTTPS certificate for $DOMAIN automatically
+# (the domain's DNS A record must point at this server, ports 80/443 open).
+{$DOMAIN} {
+	encode zstd gzip
+
+	# The game server: REST API, WebSockets (/api/rooms/*/ws) and the client.
+	# Caddy proxies WebSocket upgrades on its own; long-lived game sockets stay open.
+	reverse_proxy app:8000 {
+		health_uri /api/health
+		health_interval 15s
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
+	# Hashed build assets never change: cache them for a long time.
+	@assets path *.js *.css *.woff2 *.glb *.gltf *.bin *.png *.jpg
+	header @assets Cache-Control "public, max-age=604800"
+}

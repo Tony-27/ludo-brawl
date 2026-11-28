@@ -1,6 +1,7 @@
 /* Generated from backend/app/realtime/protocol.py by npm run gen:protocol. Do not edit. */
 
-export type ClientMessage = RollCommand | MoveCommand | CastCommand | PracticeCommand | PingCommand | ResyncCommand;
+export type ClientMessage =
+  RollCommand | MoveCommand | CastCommand | EndTurnCommand | PracticeCommand | PingCommand | ResyncCommand;
 export type GameEvent =
   | TurnStarted
   | ManaChanged
@@ -19,6 +20,8 @@ export type GameEvent =
   | TileChanged
   | Blocked
   | StatusChanged
+  | Empowered
+  | MapEvent
   | PieceFinished
   | PlayerFinished
   | GameOver;
@@ -30,7 +33,7 @@ export type Color = "red" | "green" | "yellow" | "blue";
 export type ServerMessage = HelloMessage | SnapshotMessage | EventsMessage | ErrorMessage | PongMessage;
 
 /**
- * Ludo Brawl wire protocol v1. Generated - do not edit.
+ * Ludo Brawl wire protocol v2. Generated - do not edit.
  */
 export interface Protocol {
   client: ClientMessage;
@@ -65,6 +68,15 @@ export interface CastCommand {
     [k: string]: unknown;
   };
   type: "cast";
+}
+/**
+ * Skip the after-move cast window.
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "EndTurnCommand".
+ */
+export interface EndTurnCommand {
+  type: "endTurn";
 }
 /**
  * Practice rooms only: force the next roll and/or set your mana.
@@ -108,7 +120,17 @@ export interface ManaChanged {
   color: Color;
   delta: number;
   mana: number;
-  reason: "turn" | "rolledOne" | "shrine" | "knockedOut" | "knockedBack" | "cast" | "passive" | "burned" | "practice";
+  reason:
+    | "turn"
+    | "rolledOne"
+    | "shrine"
+    | "knockedOut"
+    | "knockedBack"
+    | "cast"
+    | "passive"
+    | "burned"
+    | "practice"
+    | "spring";
   type: "manaChanged";
 }
 /**
@@ -136,8 +158,7 @@ export interface TurnPassed {
 export interface Moved {
   color: Color;
   from: number;
-  lane: number;
-  path: number[];
+  path: string[];
   piece: number;
   to: number;
   type: "moved";
@@ -177,10 +198,10 @@ export interface AbilityCast {
  */
 export interface KnockedBack {
   ability: string;
-  byColor: Color;
+  byColor: Color | null;
   color: Color;
   from: number;
-  lane: number;
+  path: string[];
   piece: number;
   to: number;
   type: "knockedBack";
@@ -192,7 +213,7 @@ export interface KnockedBack {
 export interface Teleported {
   color: Color;
   from: number;
-  lane: number;
+  path: string[];
   piece: number;
   to: number;
   type: "teleported";
@@ -203,12 +224,12 @@ export interface Teleported {
  */
 export interface Swapped {
   color: Color;
-  lane: number;
   otherColor: Color;
-  otherLane: number;
   otherPiece: number;
+  otherTile: string;
   otherTo: number;
   piece: number;
+  tile: string;
   to: number;
   type: "swapped";
 }
@@ -232,7 +253,7 @@ export interface Fell {
 export interface Slid {
   color: Color;
   from: number;
-  lane: number;
+  path: string[];
   piece: number;
   to: number;
   type: "slid";
@@ -244,7 +265,7 @@ export interface Slid {
 export interface Portaled {
   color: Color;
   from: number;
-  lane: number;
+  path: string[];
   piece: number;
   to: number;
   type: "portaled";
@@ -256,7 +277,7 @@ export interface Portaled {
 export interface Drifted {
   color: Color;
   from: number;
-  lane: number;
+  path: string[];
   piece: number;
   to: number;
   type: "drifted";
@@ -268,7 +289,7 @@ export interface Drifted {
  * via the `definition` "TileChanged".
  */
 export interface TileChanged {
-  effect: "broken" | "crater" | "fire" | "trap" | "none";
+  effect: "broken" | "cracked" | "crater" | "fire" | "trap" | "none";
   owner: Color | null;
   tile: string;
   turns: number | null;
@@ -296,6 +317,30 @@ export interface StatusChanged {
   piece: number;
   status: "shield" | "rooted";
   type: "statusChanged";
+}
+/**
+ * A team visited a Forge Anvil: its next spell hits harder.
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Empowered".
+ */
+export interface Empowered {
+  active: boolean;
+  color: Color;
+  type: "empowered";
+}
+/**
+ * A timed map event: announced (warning), happening (strike) or a conveyor flip.
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "MapEvent".
+ */
+export interface MapEvent {
+  event: "eruption" | "avalanche" | "thaw" | "freeze" | "conveyor";
+  stage: "warning" | "strike" | "flip";
+  tiles: string[];
+  type: "mapEvent";
+  value: number | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -358,13 +403,15 @@ export interface MatchView {
     }[];
   };
   castUsed: boolean;
+  conveyor: number;
   current: Color;
   lastRoll: number | null;
   legalPieces: number[];
   mapId: string;
   moveOptions: MoveOptionView[];
-  phase: "roll" | "move" | "over";
+  phase: "roll" | "move" | "act" | "over";
   ranking: Color[];
+  round: number;
   teams: {
     [k: string]: TeamView;
   };
@@ -381,21 +428,40 @@ export interface MatchView {
  */
 export interface MoveOptionView {
   lane: number | null;
+  path: string[];
   piece: number;
+  route: RouteView | null;
+  tile: string;
   to: number;
+}
+/**
+ * The branch a move enters (route preview at a fork).
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "RouteView".
+ */
+export interface RouteView {
+  length: number;
+  name: string;
+  region: string;
+  shortest: number;
+  tag: string;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
  * via the `definition` "TeamView".
  */
 export interface TeamView {
+  empowered: boolean;
   finish: number;
+  finished: boolean[];
   hero: string;
-  lanes: number[];
   mana: number;
   maxMana: number;
   pieces: number[];
+  remaining: number[];
   statuses: string[][];
+  tiles: (string | null)[];
   ultUsed: boolean;
 }
 /**
@@ -403,7 +469,7 @@ export interface TeamView {
  * via the `definition` "TileView".
  */
 export interface TileView {
-  effect: "broken" | "crater" | "fire" | "trap";
+  effect: "broken" | "cracked" | "crater" | "fire" | "trap" | "warning" | "water";
   owner: Color | null;
   turns: number | null;
 }
@@ -467,6 +533,8 @@ export interface EventsMessage {
     | TileChanged
     | Blocked
     | StatusChanged
+    | Empowered
+    | MapEvent
     | PieceFinished
     | PlayerFinished
     | GameOver

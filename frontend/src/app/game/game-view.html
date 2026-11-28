@@ -91,6 +91,23 @@
     </aside>
   }
 
+  <!-- Route choice at a fork -->
+  @if (routeChoice(); as rc) {
+    <div class="routes" role="dialog" aria-label="Choose a route">
+      <span class="routes-title">{{ rc.options[0].route?.region ?? 'Fork' }}: pick a route</span>
+      <div class="route-cards">
+        @for (o of rc.options; track o.lane; let i = $index) {
+          <button type="button" class="glass route" (click)="pickRoute(o)">
+            <span class="key">{{ i + 1 }}</span>
+            <b>{{ o.route?.name ?? 'Route ' + (i + 1) }}</b>
+            <span class="len">{{ o.route?.length }} tiles · {{ routeExtra(o) }}</span>
+            <span class="tag">{{ o.route?.tag }}</span>
+          </button>
+        }
+      </div>
+    </div>
+  }
+
   <!-- Action bar -->
   <footer class="actionbar">
     <div class="glass status-line" [class.mine]="store.myTurn()">
@@ -108,19 +125,41 @@
           [class.armed]="targeting()?.id === a.id"
           [disabled]="abilityState(a) !== 'ready' && targeting()?.id !== a.id"
           (click)="toggleAbility(a)"
-          [title]="a.description"
+          (mouseenter)="abilityState(a) === 'ready' && previewAbility(a)"
+          (mouseleave)="previewAbility(null)"
+          [attr.aria-label]="a.name + ': ' + abilityReason(a)"
         >
-          <span class="key">{{ i + 1 }}</span>
-          @if (a.slot === 'ultimate') { <span class="ult">ULT</span> }
+          <span class="key">{{ spellKeys[i] }}</span>
+          @if (a.slot === 'ultimate') { <span class="ult">ULT · 1×</span> }
           <span class="sname">{{ a.name }}</span>
           <span class="cost">{{ abilityState(a) === 'used' ? 'USED' : a.cost + '◆' }}</span>
-          <span class="tip">{{ a.description }}</span>
+          <span class="why">{{ abilityReason(a) }}</span>
+          <span class="tip">
+            <b>{{ a.name }}</b> · {{ a.cost }} mana{{ a.slot === 'ultimate' ? ' · once per match' : '' }}<br />
+            {{ a.description }}
+          </span>
         </button>
       }
-      <button type="button" class="roll" [class.ready]="canRoll()" [disabled]="!canRoll()" (click)="roll()">
-        <span>ROLL</span>
-        <small>Space</small>
-      </button>
+      @if (canEndTurn()) {
+        <button type="button" class="roll end" (click)="endTurn()">
+          <span>END TURN</span>
+          <small>Enter{{ timeLeft() !== null ? ' · ' + timeLeft() + 's' : '' }}</small>
+        </button>
+      } @else {
+        <button type="button" class="roll" [class.ready]="canRoll()" [disabled]="!canRoll()" (click)="roll()">
+          @if (shownRoll(); as v) {
+            <span class="die" [attr.aria-label]="'Rolled ' + v">
+              @for (cell of [0, 1, 2, 3, 4, 5, 6, 7, 8]; track cell) {
+                <i [class.pip]="pips[v].includes(cell)"></i>
+              }
+            </span>
+            <small>Rolled {{ v }}</small>
+          } @else {
+            <span>ROLL</span>
+            <small>Space</small>
+          }
+        </button>
+      }
     </div>
     @if (myTeam(); as t) {
       <div class="my-mana">
@@ -128,6 +167,12 @@
           <i [class.full]="o < t.mana"></i>
         }
         <span>{{ t.mana }}/{{ t.maxMana }} mana</span>
+        <span class="per-turn" [class.off]="!spellAvailable()" title="You can cast one spell per turn">
+          {{ spellAvailable() ? '✓' : '✗' }} 1 spell per turn
+        </span>
+        @if (t.empowered) {
+          <span class="empowered" title="Visited a Forge Anvil: your next spell knocks back 2 more">⚒ Empowered</span>
+        }
       </div>
     }
   </footer>
@@ -153,10 +198,12 @@
   @if (showHelp()) {
     <div class="glass help" (click)="showHelp.set(false)">
       <h3>Controls</h3>
-      <p><kbd>Space</kbd> roll · <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> spells · <kbd>Esc</kbd> cancel</p>
-      <p><kbd>Tab</kbd> next hero · <kbd>H</kbd> your camp · <kbd>Q</kbd> whole map</p>
+      <p><kbd>Space</kbd> roll · <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd> spells · <kbd>Enter</kbd> end turn · <kbd>Esc</kbd> cancel</p>
+      <p><kbd>1</kbd><kbd>2</kbd><kbd>3</kbd> camera to hero 1/2/3 · <kbd>4</kbd> your camp · <kbd>5</kbd> whole map · <kbd>Tab</kbd> next hero</p>
       <p>Drag to orbit, scroll to zoom. Click a hero card to select or find that hero.</p>
-      <p>At a fork, pick your hero, then click the lane you want.</p>
+      <h3>Turn rules</h3>
+      <p>One spell per turn: before you roll, before you move, or right after moving. Ultimates work once per match.</p>
+      <p>At a fork, pick your hero, then choose a route card (or press <kbd>1</kbd><kbd>2</kbd><kbd>3</kbd>).</p>
     </div>
   }
 

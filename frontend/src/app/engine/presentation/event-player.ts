@@ -68,9 +68,6 @@ export class EventPlayer {
   private queue: EventsMessage[] = [];
   private running = false;
   private disposed = false;
-  /** Positions this player believes in while animating (progress, lane). */
-  private lanes = new Map<string, number>();
-
   constructor(private gs: GameScene) {}
 
   get busy() {
@@ -134,17 +131,16 @@ export class EventPlayer {
     this.room = room;
     const match = room.match;
     if (!match) return;
-    if (instant) this.gs.dice.root.setEnabled(false);
+    if (instant || match.phase !== 'move') this.gs.dice.hide(instant ? 0 : 0.3);
     this.gs.world.setTurnColor(match.phase === 'over' ? null : match.current);
+    this.gs.world.setConveyor(match.conveyor);
     for (const [color, team] of Object.entries(match.teams) as [Color, (typeof match.teams)[string]][]) {
-      team.pieces.forEach((progress, i) => {
+      team.tiles.forEach((tile, i) => {
         const actor = this.gs.actor(color, i);
         if (!actor) return;
-        const lane = team.lanes[i] ?? 0;
-        this.lanes.set(`${color}${i}`, lane);
-        const at = this.spot(color, progress, i, lane);
+        const at = this.spot(color, tile, i);
         if ((instant || Vector3.DistanceSquared(actor.position, at) > 0.01) && !actor.busy) {
-          actor.place(at, this.gs.layout.forward(color, progress, lane));
+          actor.place(at, this.gs.layout.forward(color, tile));
           actor.body.scaling.setAll(1);
         }
         const statuses = team.statuses[i] ?? [];
@@ -164,14 +160,13 @@ export class EventPlayer {
   private shownTiles = new Set<string>();
 
   /** Where a piece stands, spreading out pieces that share a tile. */
-  private spot(color: Color, progress: number, piece: number, lane: number): Vector3 {
-    const base = this.gs.layout.position(color, progress, piece, lane);
-    const node = this.gs.layout.nodeAt(color, progress, lane);
-    if (!node || !this.room?.match) return base;
+  private spot(color: Color, tile: string | null | undefined, piece: number): Vector3 {
+    const base = this.gs.layout.position(color, tile, piece);
+    if (!tile || !this.room?.match) return base;
     const sharing: string[] = [];
-    for (const [c, team] of Object.entries(this.room.match.teams) as [Color, { pieces: number[]; lanes: number[] }][]) {
-      team.pieces.forEach((p, i) => {
-        if (this.gs.layout.nodeAt(c, p, team.lanes[i] ?? 0)?.id === node.id) sharing.push(`${c}${i}`);
+    for (const [c, team] of Object.entries(this.room.match.teams) as [Color, { tiles: (string | null)[] }][]) {
+      team.tiles.forEach((t, i) => {
+        if (t === tile) sharing.push(`${c}${i}`);
       });
     }
     if (sharing.length < 2) return base;
@@ -183,11 +178,12 @@ export class EventPlayer {
   private focus(color: Color): Vector3 {
     // The most advanced piece on the board, or the camp.
     const team = this.room?.match?.teams[color];
-    let best = -1;
+    let best = Infinity;
     let at = Vector3.FromArray(this.gs.layout.data.camps[color].center);
-    team?.pieces.forEach((p, i) => {
-      if (p > best && p < this.gs.layout.finish(color)) {
-        best = p;
+    team?.tiles.forEach((tile, i) => {
+      const left = team.remaining[i] ?? Infinity;
+      if (tile && !team.finished[i] && left < best) {
+        best = left;
         const a = this.gs.actor(color, i);
         if (a) at = a.position.clone();
       }
@@ -195,8 +191,14 @@ export class EventPlayer {
     return at;
   }
 
-  private positions(color: Color, piece: number, path: number[], end: number, lane: number): Vector3[] {
-    return path.map((p) => this.gs.layout.position(color, p, piece, this.gs.layout.laneAlong(color, path[0], end, lane, p)));
+  private positions(color: Color, piece: number, path: string[]): Vector3[] {
+    return path.map((id) => this.gs.layout.position(color, id, piece));
+  }
+
+  private centroid(tiles: string[]): Vector3 {
+    const pts = tiles.map((id) => this.gs.layout.tilePos(id)).filter((v): v is Vector3 => !!v);
+    if (!pts.length) return Vector3.Zero();
+    return pts.reduce((a, b) => a.add(b), Vector3.Zero()).scale(1 / pts.length);
   }
 
   // ------------------------------------------------------------------ choreography
@@ -207,6 +209,7 @@ export class EventPlayer {
       const next = events[i + 1];
       switch (e.type) {
         case 'turnStarted': {
+          this.gs.dice.hide(0.2);
           const at = this.focus(e.color);
           this.gs.world.setTurnColor(e.color);
           this.gs.director.followTarget(() => at, 15, 0.9);
@@ -216,11 +219,13 @@ export class EventPlayer {
           await this.rolled(e.color, e.value);
           break;
         case 'turnPassed': {
+          this.gs.dice.hide(0.6);
           this.gs.fx.text(this.focus(e.color), e.reason === 'threeSixes' ? 'THREE SIXES!' : 'NO MOVES', '#ffffff', 0.8);
           await this.gs.tween.wait(0.6);
           break;
         }
         case 'moved': {
+          if (e.via === 'roll') this.gs.dice.hide(0.15);
           const attack = next?.type === 'captured' && next.byColor === e.color && next.byPiece === e.piece ? next : null;
           await this.moved(e, attack);
           if (attack) i++;
@@ -236,11 +241,11 @@ export class EventPlayer {
           await this.knockedBack(e);
           break;
         case 'teleported':
-          await this.teleported(e.color, e.piece, e.to, e.lane, 'blink');
+          await this.teleported(e.color, e.piece, e.path[e.path.length - 1], 'blink');
           break;
         case 'portaled':
           this.gs.onCue('portal');
-          await this.teleported(e.color, e.piece, e.to, e.lane, 'portal');
+          await this.teleported(e.color, e.piece, e.path[e.path.length - 1], 'portal');
           break;
         case 'slid':
         case 'drifted':
@@ -296,6 +301,19 @@ export class EventPlayer {
             this.gs.fx.text(at, 'BURNED -1', '#ff9a5a', 0.6);
           }
           break;
+        case 'empowered': {
+          if (e.active) {
+            const at = this.focus(e.color);
+            this.gs.onCue('mana');
+            this.gs.fx.sparkle(at, [1, 0.6, 0.2], 60);
+            this.gs.fx.text(at, 'EMPOWERED!', '#ffb347', 0.7);
+            await this.gs.tween.wait(0.3);
+          }
+          break;
+        }
+        case 'mapEvent':
+          await this.mapEvent(e);
+          break;
         case 'pieceFinished': {
           const a = this.gs.actor(e.color, e.piece);
           if (a) {
@@ -337,7 +355,7 @@ export class EventPlayer {
     this.gs.onCue('dice');
     await this.gs.dice.throw(from, land, value, this.gs.teamRgb(color));
     this.gs.fx.text(land, `${value}`, '#ffffff', 0.9);
-    this.gs.dice.hide(1.0);
+    // The die stays on the board until the move is made, so the roll is never missed.
     await this.gs.tween.wait(0.15);
   }
 
@@ -348,14 +366,14 @@ export class EventPlayer {
     const vfx = this.gs.skinFor(e.color).vfx;
     if (e.from < 0) {
       this.gs.onCue('summon');
-      const target = this.gs.layout.position(e.color, 0, e.piece, e.lane);
+      const target = this.gs.layout.position(e.color, e.path[0], e.piece);
       this.gs.fx.blink(actor.position, vfx);
       await actor.leap(target, 2.2, 0.7, true);
       this.gs.fx.dust(target, 16);
       if (attack) await this.captured(e.color, e.piece, attack.color, attack.piece, true);
       return;
     }
-    const steps = this.positions(e.color, e.piece, e.path, e.to, e.lane);
+    const steps = this.positions(e.color, e.piece, e.path);
     const run = attack ? steps.slice(0, -1) : steps;
     const speed = e.via === 'dash' ? 0.12 : e.via === 'rally' ? 0.2 : 0.26;
     if (e.via === 'dash') this.gs.fx.blink(actor.position, vfx);
@@ -395,9 +413,9 @@ export class EventPlayer {
     await this.gs.tween.wait(0.025);
     this.gs.timeScale = 1;
     this.gs.onCue('launch');
-    const home = this.gs.layout.position(color, -1, piece);
+    const home = this.gs.layout.position(color, null, piece);
     void attacker.oneShot('victory', 1.4);
-    await victim.launchedHome(home, this.gs.layout.forward(color, -1));
+    await victim.launchedHome(home, this.gs.layout.forward(color, null));
     this.gs.onCue('land');
     this.gs.fx.dust(home, 20);
   }
@@ -412,8 +430,8 @@ export class EventPlayer {
     let bestD = Infinity;
     team?.pieces.forEach((p, i) => {
       const a = this.gs.actor(e.color, i);
-      if (!a || p < 0 || p >= team.finish) return;
-      const d = goal ? Vector3.Distance(a.position, goal) : -p;
+      if (!a || p < 0 || team.finished[i]) return;
+      const d = goal ? Vector3.Distance(a.position, goal) : team.remaining[i];
       if (d < bestD) {
         bestD = d;
         best = a;
@@ -515,7 +533,7 @@ export class EventPlayer {
         const team = this.room?.match?.teams[e.color];
         team?.pieces.forEach((p, i) => {
           const a = this.gs.actor(e.color, i);
-          if (a && p >= 0 && p < team.finish) {
+          if (a && p >= 0 && !team.finished[i]) {
             void a.oneShot('victory', 1.5);
             this.gs.fx.sparkle(a.position, [1, 0.9, 0.5], 50);
           }
@@ -549,28 +567,24 @@ export class EventPlayer {
   private async knockedBack(e: Ev<'knockedBack'>) {
     const actor = this.gs.actor(e.color, e.piece);
     if (!actor) return;
-    const progresses: number[] = [];
-    for (let p = e.from - 1; p >= e.to; p--) progresses.push(p);
-    const pts = progresses.length
-      ? progresses.map((p) => this.gs.layout.position(e.color, p, e.piece, this.gs.layout.laneAlong(e.color, e.from, e.to, e.lane, p)))
-      : [this.gs.layout.position(e.color, e.to, e.piece, e.lane)];
+    const pts = this.positions(e.color, e.piece, e.path);
     this.gs.onCue('hit');
-    this.gs.fx.impact(actor.position, this.gs.skinFor(e.byColor).vfx, false);
+    this.gs.fx.impact(actor.position, e.byColor ? this.gs.skinFor(e.byColor).vfx : [0.9, 0.95, 1], false);
     this.gs.fx.text(actor.position, `-${e.from - e.to}`, '#ff8a8a', 0.8);
     this.gs.director.followTarget(() => actor.position, 10, 0.95);
     await actor.knockedBack(pts, 0.35 + pts.length * 0.08);
     this.gs.fx.dust(actor.position, 12);
   }
 
-  private async teleported(color: Color, piece: number, to: number, lane: number, kind: 'blink' | 'portal') {
+  private async teleported(color: Color, piece: number, tile: string, kind: 'blink' | 'portal') {
     const actor = this.gs.actor(color, piece);
     if (!actor) return;
     const vfx: [number, number, number] = kind === 'portal' ? [0.7, 0.35, 1] : this.gs.skinFor(color).vfx;
     if (kind === 'blink') this.gs.onCue('blink');
     this.gs.fx.blink(actor.position, vfx);
     await this.gs.tween.tween(0.18, (t) => actor.body.scaling.setAll(1 - t));
-    const dest = this.gs.layout.position(color, to, piece, lane);
-    actor.place(dest, this.gs.layout.forward(color, to, lane));
+    const dest = this.gs.layout.position(color, tile, piece);
+    actor.place(dest, this.gs.layout.forward(color, tile));
     this.gs.director.followTarget(() => actor.position, 10, 0.95);
     this.gs.fx.blink(dest, vfx);
     await this.gs.tween.tween(0.22, (t) => actor.body.scaling.setAll(t));
@@ -582,9 +596,7 @@ export class EventPlayer {
     if (!actor) return;
     this.gs.onCue('slide');
     const dir = e.to >= e.from ? 1 : -1;
-    const path: number[] = [];
-    for (let p = e.from + dir; dir > 0 ? p <= e.to : p >= e.to; p += dir) path.push(p);
-    const pts = this.positions(e.color, e.piece, path.length ? path : [e.to], e.to, e.lane);
+    const pts = this.positions(e.color, e.piece, e.path);
     this.gs.director.followTarget(() => actor.position, 10, 0.95);
     void actor.play('dodge', { loop: false, speed: 0.8 });
     actor.busy = true;
@@ -610,8 +622,8 @@ export class EventPlayer {
       a.body.scaling.setAll(1 - t);
       b.body.scaling.setAll(1 - t);
     });
-    a.place(this.gs.layout.position(e.color, e.to, e.piece, e.lane), this.gs.layout.forward(e.color, e.to, e.lane));
-    b.place(this.gs.layout.position(e.otherColor, e.otherTo, e.otherPiece, e.otherLane), this.gs.layout.forward(e.otherColor, e.otherTo, e.otherLane));
+    a.place(this.gs.layout.position(e.color, e.tile, e.piece), this.gs.layout.forward(e.color, e.tile));
+    b.place(this.gs.layout.position(e.otherColor, e.otherTile, e.otherPiece), this.gs.layout.forward(e.otherColor, e.otherTile));
     await this.gs.tween.tween(0.25, (t) => {
       a.body.scaling.setAll(t);
       b.body.scaling.setAll(t);
@@ -634,8 +646,8 @@ export class EventPlayer {
       actor.body.scaling.setAll(1 - t * 0.9);
     });
     this.gs.fx.impact(hole, this.gs.layout.data.theme === 'forge' ? [1, 0.4, 0.05] : [0.5, 0.3, 0.9], false);
-    const home = this.gs.layout.position(e.color, -1, e.piece);
-    actor.place(home, this.gs.layout.forward(e.color, -1));
+    const home = this.gs.layout.position(e.color, null, e.piece);
+    actor.place(home, this.gs.layout.forward(e.color, null));
     actor.body.position.y = 0;
     actor.body.rotation.y = 0;
     await this.gs.tween.tween(0.3, (t) => actor.body.scaling.setAll(t));
@@ -643,6 +655,80 @@ export class EventPlayer {
     actor.busy = false;
     void actor.oneShot('standUp', 1.5);
     this.gs.fx.dust(home, 14);
+  }
+
+  /** Eruptions, avalanches, thawing lakes and flipping conveyors. */
+  private async mapEvent(e: Ev<'mapEvent'>) {
+    const at = this.centroid(e.tiles);
+    const forgeRgb: [number, number, number] = [1, 0.4, 0.08];
+    const snowRgb: [number, number, number] = [0.9, 0.95, 1];
+    if (e.stage === 'warning') {
+      for (const t of e.tiles) {
+        if (e.event === 'eruption' || e.event === 'avalanche') this.gs.world.setTileEffect(t, 'warning');
+        this.shownTiles.add(t);
+      }
+      const text =
+        e.event === 'eruption'
+          ? 'ERUPTION NEXT ROUND!'
+          : e.event === 'avalanche'
+            ? 'AVALANCHE NEXT ROUND!'
+            : e.event === 'thaw'
+              ? 'THE ICE IS CRACKING…'
+              : '';
+      if (text) {
+        this.gs.director.cinematic({ target: at, radius: 16, beta: 0.85 }, 3);
+        this.gs.fx.text(at, text, e.event === 'eruption' ? '#ff8a4a' : '#e6f6ff', 1.1);
+        this.gs.onCue('blocked');
+        await this.gs.tween.wait(0.9);
+      }
+      return;
+    }
+    if (e.stage === 'flip') {
+      this.gs.world.setConveyor(e.value ?? 1);
+      if (e.tiles.length) this.gs.fx.text(at, e.value && e.value < 0 ? 'CONVEYORS REVERSE!' : 'CONVEYORS FORWARD', '#ffb347', 0.8);
+      return;
+    }
+    // Strike.
+    this.gs.director.cinematic({ target: at, radius: 18, beta: 0.8 }, 3);
+    if (e.event === 'eruption' || e.event === 'avalanche') {
+      for (const t of e.tiles) {
+        this.gs.world.setTileEffect(t, 'none');
+        this.shownTiles.delete(t);
+      }
+      this.gs.onCue(e.event === 'eruption' ? 'meteor' : 'crumble');
+      this.gs.fx.text(at, e.event === 'eruption' ? 'ERUPTION!' : 'AVALANCHE!', e.event === 'eruption' ? '#ff6a2a' : '#ffffff', 1.2);
+      for (const t of e.tiles) {
+        const p = this.gs.layout.tilePos(t);
+        if (!p) continue;
+        if (e.event === 'eruption') {
+          this.gs.fx.lightning(p.add(new Vector3(0, 0.2, 0)), p.add(new Vector3(0, 7, 0)), forgeRgb);
+          this.gs.fx.impact(p, forgeRgb, false);
+        } else {
+          this.gs.fx.dust(p, 30);
+          this.gs.fx.impact(p, snowRgb, false);
+        }
+      }
+      this.gs.director.addShake(0.8);
+      await this.gs.tween.wait(0.6);
+    } else if (e.event === 'thaw') {
+      this.gs.onCue('crumble');
+      for (const t of e.tiles) {
+        this.gs.world.setTileEffect(t, 'water');
+        this.shownTiles.add(t);
+      }
+      this.gs.fx.text(at, 'THE LAKE THAWS!', '#9fe8ff', 1.0);
+      await this.gs.tween.wait(0.6);
+    } else if (e.event === 'freeze') {
+      this.gs.onCue('blink');
+      for (const t of e.tiles) {
+        this.gs.world.setTileEffect(t, 'none');
+        this.shownTiles.delete(t);
+        const p = this.gs.layout.tilePos(t);
+        if (p) this.gs.fx.sparkle(p, snowRgb, 20);
+      }
+      this.gs.fx.text(at, 'THE LAKE FREEZES', '#e6f6ff', 0.9);
+      await this.gs.tween.wait(0.5);
+    }
   }
 
   dispose() {

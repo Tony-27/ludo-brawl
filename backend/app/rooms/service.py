@@ -18,7 +18,7 @@ from ..game import bots
 from ..game.board import CLOCKWISE, DEFAULT_MAP, Color, load_board
 from ..game.events import _Event, dump
 from ..game.heroes import DEFAULT_HERO, HEROES
-from ..game.rules import Match, RuleError
+from ..game.rules import Match, Phase, RuleError
 from ..realtime.protocol import MatchView, PlayerView, RoomView
 
 MAX_PLAYERS = 4
@@ -107,6 +107,7 @@ class MemoryRoomStore:
 class Timings:
     bot_delay: float = 1.1  # seconds a bot waits before acting (lets animations breathe)
     turn_timeout: float = 30.0  # seconds before an idle human is auto-played
+    act_timeout: float = 12.0  # seconds to cast after moving before the turn ends by itself
     room_idle_ttl: float = 2 * 60 * 60
 
 
@@ -379,7 +380,18 @@ class RoomService:
 
     def cast(self, room: Room, seat: Seat, ability: str, target: dict) -> None:
         match = self._require_turn(room, seat)
+        target = {k: v for k, v in target.items() if k != "preview"}
         self._run(room, lambda: match.cast(ability, target))
+
+    def end_turn(self, room: Room, seat: Seat) -> None:
+        match = self._require_turn(room, seat)
+        self._run(room, match.end_turn)
+
+    def _timeout(self, room: Room) -> float:
+        match = room.match
+        if match is not None and match.phase == Phase.ACT:
+            return self.timings.act_timeout
+        return self.timings.turn_timeout
 
     def _record(self, room: Room) -> None:
         match = room.match
@@ -423,7 +435,7 @@ class RoomService:
                 continue
             waited = now - room.turn_started
             if (seat.is_bot and waited >= self.timings.bot_delay) or (
-                not seat.is_bot and waited >= self.timings.turn_timeout
+                not seat.is_bot and waited >= self._timeout(room)
             ):
                 self.auto_play(room, seat)
 
@@ -432,11 +444,16 @@ class RoomService:
         assert match is not None
         action = bots.choose_action(match, room.rng)
         if action.kind == "cast" and not seat.is_bot:
-            action = bots.BotAction("roll")  # don't spend an AFK player's mana
+            # Don't spend an idle player's mana.
+            action = bots.BotAction("end") if match.phase == Phase.ACT else bots.BotAction("roll")
+            if match.phase == Phase.MOVE:
+                action = bots.best_move(match, room.rng)
         if action.kind == "cast":
             self.cast(room, seat, action.ability or "", action.target or {})
         elif action.kind == "roll":
             self.roll(room, seat)
+        elif action.kind == "end":
+            self.end_turn(room, seat)
         else:
             self.move(room, seat, action.piece or 0, action.lane)
 
@@ -447,7 +464,7 @@ class RoomService:
             snap = room.match.snapshot()
             seat = room.by_color(room.match.current)
             if room.state == "playing" and seat and not seat.is_bot:
-                left = max(0.0, self.timings.turn_timeout - (self.clock() - room.turn_started))
+                left = max(0.0, self._timeout(room) - (self.clock() - room.turn_started))
                 snap["turnTimeLeftMs"] = int(left * 1000)
             match_view = MatchView.model_validate(snap)
         return RoomView(

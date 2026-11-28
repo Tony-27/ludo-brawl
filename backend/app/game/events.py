@@ -2,7 +2,8 @@
 
 Every event is a small pydantic model with a literal `type`, so the union
 below can be exported to JSON Schema and turned into TypeScript types.
-Positions are (progress, lane) on the piece's own route; see board.py.
+Positions are progress values on the piece's own route (see board.py);
+travel events also list the node ids walked, so clients never need the route logic.
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ class _Travel(_Event):
     piece: int
     start: int = Field(alias="from")
     end: int = Field(alias="to")
-    lane: int = 0
+    path: list[str]  # node ids walked, start excluded, end included
 
 
 class TurnStarted(_Event):
@@ -39,7 +40,9 @@ class ManaChanged(_Event):
     color: Color
     mana: int
     delta: int
-    reason: Literal["turn", "rolledOne", "shrine", "knockedOut", "knockedBack", "cast", "passive", "burned", "practice"]
+    reason: Literal[
+        "turn", "rolledOne", "shrine", "knockedOut", "knockedBack", "cast", "passive", "burned", "practice", "spring"
+    ]
 
 
 class Rolled(_Event):
@@ -56,7 +59,6 @@ class TurnPassed(_Event):
 
 class Moved(_Travel):
     type: Literal["moved"] = "moved"
-    path: list[int]
     via: Literal["roll", "dash", "rally"] = "roll"
 
 
@@ -84,7 +86,7 @@ class AbilityCast(_Event):
 
 class KnockedBack(_Travel):
     type: Literal["knockedBack"] = "knockedBack"
-    byColor: Color
+    byColor: Color | None = None  # None for map events (avalanche)
     ability: str
 
 
@@ -97,11 +99,11 @@ class Swapped(_Event):
     color: Color
     piece: int
     to: int
-    lane: int
+    tile: str
     otherColor: Color
     otherPiece: int
     otherTo: int
-    otherLane: int
+    otherTile: str
 
 
 class Fell(_Event):
@@ -131,7 +133,7 @@ class TileChanged(_Event):
 
     type: Literal["tileChanged"] = "tileChanged"
     tile: str
-    effect: Literal["broken", "crater", "fire", "trap", "none"]
+    effect: Literal["broken", "cracked", "crater", "fire", "trap", "none"]
     turns: int | None = None
     owner: Color | None = None
 
@@ -151,6 +153,24 @@ class StatusChanged(_Event):
     piece: int
     status: Literal["shield", "rooted"]
     active: bool
+
+
+class Empowered(_Event):
+    """A team visited a Forge Anvil: its next spell hits harder."""
+
+    type: Literal["empowered"] = "empowered"
+    color: Color
+    active: bool
+
+
+class MapEvent(_Event):
+    """A timed map event: announced (warning), happening (strike) or a conveyor flip."""
+
+    type: Literal["mapEvent"] = "mapEvent"
+    event: Literal["eruption", "avalanche", "thaw", "freeze", "conveyor"]
+    stage: Literal["warning", "strike", "flip"]
+    tiles: list[str] = []
+    value: int | None = None
 
 
 class PieceFinished(_Event):
@@ -188,6 +208,8 @@ GameEvent = Annotated[
     | TileChanged
     | Blocked
     | StatusChanged
+    | Empowered
+    | MapEvent
     | PieceFinished
     | PlayerFinished
     | GameOver,
