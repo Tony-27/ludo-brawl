@@ -31,10 +31,24 @@ class PlayerView(BaseModel):
 class TeamView(BaseModel):
     hero: str
     pieces: list[int]
+    lanes: list[int]
     mana: int
     maxMana: int
     finish: int
+    ultUsed: bool
     statuses: list[list[str]]
+
+
+class MoveOptionView(BaseModel):
+    piece: int
+    lane: int | None
+    to: int
+
+
+class TileView(BaseModel):
+    effect: Literal["broken", "crater", "fire", "trap"]
+    turns: int | None
+    owner: Color | None
 
 
 class MatchView(BaseModel):
@@ -45,8 +59,11 @@ class MatchView(BaseModel):
     turn: int
     lastRoll: int | None
     legalPieces: list[int]
+    moveOptions: list[MoveOptionView]
     castUsed: bool
+    castTargets: dict[str, list[dict]]
     ranking: list[Color]
+    tiles: dict[str, TileView]
     teams: dict[Color, TeamView]
     turnTimeLeftMs: int | None = None
 
@@ -56,6 +73,7 @@ class RoomView(BaseModel):
     state: Literal["lobby", "playing", "finished"]
     hostId: str
     mapId: str
+    practice: bool
     version: int
     seq: int
     players: list[PlayerView]
@@ -79,12 +97,21 @@ class RollCommand(BaseModel):
 class MoveCommand(BaseModel):
     type: Literal["move"]
     piece: int = Field(ge=0, le=7)
+    lane: int | None = Field(default=None, ge=0, le=1)
 
 
 class CastCommand(BaseModel):
     type: Literal["cast"]
     ability: str
     target: dict
+
+
+class PracticeCommand(BaseModel):
+    """Practice rooms only: force the next roll and/or set your mana."""
+
+    type: Literal["practice"]
+    dice: int | None = Field(default=None, ge=1, le=6)
+    mana: int | None = Field(default=None, ge=0, le=10)
 
 
 class PingCommand(BaseModel):
@@ -96,7 +123,7 @@ class ResyncCommand(BaseModel):
 
 
 ClientMessage = Annotated[
-    RollCommand | MoveCommand | CastCommand | PingCommand | ResyncCommand,
+    RollCommand | MoveCommand | CastCommand | PracticeCommand | PingCommand | ResyncCommand,
     Field(discriminator="type"),
 ]
 

@@ -165,9 +165,9 @@
 /* ---------------------------------------------------------------- feed */
 .feed {
   position: absolute;
-  left: 12px;
-  bottom: 120px;
-  width: 320px;
+  right: 12px;
+  bottom: 70px;
+  width: 300px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -176,8 +176,9 @@
   p {
     margin: 0;
     padding: 4px 10px;
-    border-left: 3px solid var(--c);
-    background: linear-gradient(90deg, rgba(10, 8, 24, 0.7), transparent);
+    border-right: 3px solid var(--c);
+    text-align: right;
+    background: linear-gradient(270deg, rgba(10, 8, 24, 0.7), transparent);
     font-size: 0.85rem;
     text-shadow: 0 1px 2px #000;
     animation: slide 0.25s ease-out;
@@ -335,3 +336,169 @@
   .spell { width: 90px; height: 74px; }
   .roll { width: 110px; height: 84px; }
 }
+
+/* ---------------------------------------------------------------- badges & help */
+.badge {
+  padding: 6px 12px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+  font-size: 0.75rem;
+  color: #7dffb0;
+  border-color: #7dffb066;
+}
+
+.help {
+  position: absolute;
+  top: 64px;
+  right: 12px;
+  z-index: 8;
+  padding: 14px 18px;
+  max-width: 340px;
+  font-size: 0.9rem;
+  h3 { margin: 0 0 8px; }
+  p { margin: 6px 0; color: var(--muted); }
+  kbd {
+    display: inline-block;
+    min-width: 22px;
+    padding: 1px 6px;
+    margin: 0 2px;
+    border-radius: 6px;
+    border: 1px solid #ffffff33;
+    background: #ffffff14;
+    color: var(--text);
+    font-family: inherit;
+    font-size: 0.8rem;
+    text-align: center;
+  }
+}
+
+/* ---------------------------------------------------------------- hero cards */
+.cards {
+  position: absolute;
+  left: 12px;
+  bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+}
+
+.card-hero {
+  font: inherit;
+  width: 210px;
+  padding: 8px 12px 8px 40px;
+  position: relative;
+  text-align: left;
+  cursor: pointer;
+  border-left: 4px solid var(--c);
+  transition: transform 0.15s, box-shadow 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  &:hover { transform: translateX(4px); }
+  &.actionable {
+    box-shadow: 0 0 0 2px #ffd23f, 0 0 18px #ffd23f88;
+    animation: nudge 1.1s ease-in-out infinite;
+  }
+  &.home { opacity: 0.65; }
+  .num {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--c);
+    color: #111;
+    font-weight: 900;
+    display: grid;
+    place-items: center;
+    font-size: 0.8rem;
+  }
+  .where { font-weight: 700; font-size: 0.85rem; }
+  .track {
+    height: 4px;
+    border-radius: 2px;
+    background: #ffffff1f;
+    overflow: hidden;
+    .fill { display: block; height: 100%; background: var(--c); }
+  }
+  .icons { position: absolute; right: 10px; top: 8px; font-size: 0.85rem; }
+}
+
+@keyframes nudge {
+  50% { transform: translateX(5px); }
+}
+
+/* ---------------------------------------------------------------- practice */
+.practice {
+  position: absolute;
+  right: 12px;
+  top: 64px;
+  z-index: 4;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 210px;
+  strong { color: #7dffb0; font-size: 0.85rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .small { color: var(--muted); font-size: 0.75rem; }
+  .dice-row { display: flex; gap: 4px; }
+  button {
+    font: inherit;
+    font-weight: 800;
+    color: var(--text);
+    background: #ffffff14;
+    border: 1px solid #ffffff2a;
+    border-radius: 8px;
+    padding: 5px 0;
+    flex: 1;
+    cursor: pointer;
+    &.on { background: #7dffb0; color: #102016; }
+    &:hover { border-color: #ffffff66; }
+  }
+  .wide { font-size: 0.8rem; padding: 7px; }
+}
+
+/* ---------------------------------------------------------------- spell slots */
+.spell {
+  overflow: visible;
+  &.ultimate {
+    border-color: #ffd76a88;
+    background: linear-gradient(160deg, #6b4a12, #2a1838);
+    &:hover:not(:disabled) { box-shadow: 0 0 22px #ffd76a99; }
+    .cost { color: #ffd76a; }
+  }
+  &.used { filter: grayscale(1); opacity: 0.35; }
+  &.noMana .cost { color: #ff8a8a; }
+  .ult {
+    position: absolute;
+    top: 6px;
+    right: 8px;
+    font-size: 0.6rem;
+    font-weight: 900;
+    letter-spacing: 0.1em;
+    color: #ffd76a;
+  }
+  .tip {
+    position: absolute;
+    bottom: calc(100% + 10px);
+    left: 50%;
+    transform: translateX(-50%);
+    width: 230px;
+    padding: 10px 12px;
+    border-radius: 12px;
+    background: rgba(12, 9, 28, 0.95);
+    border: 1px solid #ffffff22;
+    font-size: 0.8rem;
+    font-weight: 400;
+    line-height: 1.35;
+    color: var(--text);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  &:hover .tip { opacity: 1; }
+}
+.spell:disabled:hover .tip { opacity: 1; }

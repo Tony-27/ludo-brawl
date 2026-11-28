@@ -7,14 +7,20 @@ Turn flow:
     ROLL  - the player may cast one ability, then rolls
     MOVE  - the player may still cast (if they haven't), then moves a piece
 A roll of 6, a capture or getting a piece home grants another roll in the
-same turn. Only one ability may be cast per turn.
+same turn. Only one ability may be cast per turn; ultimates once per match.
+
+The *arrival rule*: whenever a piece lands on a tile, by any means (move,
+dash, knockback, swap, slide, portal...), the tile applies to it. That is
+what lets spells push enemies into pits.
 """
 
 from __future__ import annotations
 
+import copy
 import random
 from dataclasses import dataclass, field
 from enum import StrEnum
+from typing import Literal
 
 from . import events as ev
 from .board import CAMP, Board, Color, Node
@@ -31,9 +37,12 @@ class Phase(StrEnum):
     OVER = "over"
 
 
+Cause = Literal["move", "dash", "knockback", "teleport", "swap", "slide", "portal", "drift", "rally"]
+
+
 @dataclass(frozen=True)
 class RuleConfig:
-    max_mana: int = 5
+    max_mana: int = 6
     starting_mana: int = 0
     mana_per_turn: int = 1
     mana_rolled_one: int = 1
@@ -41,7 +50,10 @@ class RuleConfig:
     mana_knocked_back: int = 1
     mana_shrine: int = 2
     mana_bushido: int = 1
+    mana_burn: int = 1
     max_sixes: int = 3
+    max_chain: int = 3  # slide/portal chain depth
+    bridge_rebuild_turns: int = 8  # turns (all players) until a collapsed bridge is back
 
 
 @dataclass
@@ -49,8 +61,24 @@ class Team:
     color: Color
     hero: str
     pieces: list[int]
+    lanes: list[int]
     mana: int = 0
     statuses: list[dict[str, int]] = field(default_factory=list)  # per piece: {"shield": 1, "rooted": n}
+    ult_used: bool = False
+
+
+@dataclass
+class TileEffect:
+    kind: Literal["crater", "fire", "trap"]
+    turns: int  # counted in the owner's turns
+    owner: Color
+
+
+@dataclass(frozen=True)
+class MoveOption:
+    piece: int
+    lane: int | None  # None when no lane choice is involved
+    to: int
 
 
 class Match:
@@ -73,7 +101,7 @@ class Match:
         self.rng = rng or random.Random()
         n = board.pieces_per_team
         self.teams: dict[Color, Team] = {
-            c: Team(c, heroes[c], [CAMP] * n, self.config.starting_mana, [{} for _ in range(n)]) for c in order
+            c: Team(c, heroes[c], [CAMP] * n, [0] * n, self.config.starting_mana, [{} for _ in range(n)]) for c in order
         }
         self.order = order
         self.current: Color = order[0]
@@ -83,6 +111,11 @@ class Match:
         self.sixes = 0
         self.cast_this_turn = False
         self.ranking: list[Color] = []
+        self.tile_fx: dict[str, TileEffect] = {}
+        self.crumble: dict[str, int] = {
+            nid: int(n.hazard.get("uses", 3)) for nid, n in board.nodes.items() if n.hazard.get("type") == "crumble"
+        }
+        self.broken: dict[str, int] = {}  # collapsed bridge -> turns until rebuilt
         self._events: list[ev._Event] = []
         self._begin_turn()
 
@@ -95,11 +128,31 @@ class Match:
         out, self._events = self._events, []
         return out
 
-    def team(self, color: Color) -> Team:
-        return self.teams[color]
+    def clone(self) -> Match:
+        """Deep copy for look-ahead (bots), sharing the immutable board and config."""
+        memo = {id(self.board): self.board, id(self.config): self.config, id(self.rng): random.Random(0)}
+        return copy.deepcopy(self, memo)
 
     def node_of(self, color: Color, piece: int) -> Node | None:
-        return self.board.node(color, self.teams[color].pieces[piece])
+        team = self.teams[color]
+        return self.board.node(color, team.pieces[piece], team.lanes[piece])
+
+    def is_finished(self, color: Color, piece: int) -> bool:
+        return self.teams[color].pieces[piece] >= self.board.finish(color)
+
+    def on_trail(self, color: Color, piece: int) -> bool:
+        """Out of camp, not finished and on the shared loop (not the home path)."""
+        node = self.node_of(color, piece)
+        return node is not None and node.loop_index is not None and not self.is_finished(color, piece)
+
+    def hazard_of(self, node: Node) -> str | None:
+        """The effect a tile has on a piece that lands there right now."""
+        fx = self.tile_fx.get(node.id)
+        if node.id in self.broken or (fx and fx.kind == "crater"):
+            return "pit"
+        if node.hazard:
+            return node.hazard["type"] if node.hazard["type"] != "crumble" else None
+        return fx.kind if fx else None
 
     def target(self, color: Color, piece: int, roll: int) -> int | None:
         p = self.teams[color].pieces[piece]
@@ -111,15 +164,26 @@ class Match:
         t = p + roll
         return t if t <= finish else None
 
-    def legal_pieces(self) -> list[int]:
+    def move_options(self) -> list[MoveOption]:
         if self.phase != Phase.MOVE or self.last_roll is None:
             return []
-        team = self.teams[self.current]
-        return [
-            i
-            for i in range(len(team.pieces))
-            if "rooted" not in team.statuses[i] and self.target(self.current, i, self.last_roll) is not None
-        ]
+        color = self.current
+        team = self.teams[color]
+        options: list[MoveOption] = []
+        for i, p in enumerate(team.pieces):
+            if "rooted" in team.statuses[i]:
+                continue
+            t = self.target(color, i, self.last_roll)
+            if t is None:
+                continue
+            if self.board.needs_lane_choice(color, p, t):
+                options += [MoveOption(i, 0, t), MoveOption(i, 1, t)]
+            else:
+                options.append(MoveOption(i, None, t))
+        return options
+
+    def legal_pieces(self) -> list[int]:
+        return sorted({o.piece for o in self.move_options()})
 
     def can_cast(self, ability_id: str) -> bool:
         team = self.teams[self.current]
@@ -130,11 +194,43 @@ class Match:
             and ability is not None
             and ability_id in HEROES[team.hero].abilities
             and team.mana >= ability.cost
+            and not (ability.once_per_match and team.ult_used)
         )
+
+    def cast_targets(self) -> dict[str, list[dict]]:
+        """Every valid target for each ability the current player can afford right now."""
+        from . import spells
+
+        out: dict[str, list[dict]] = {}
+        for aid in HEROES[self.teams[self.current].hero].abilities:
+            if not self.can_cast(aid):
+                continue
+            ability = ABILITIES[aid]
+            valid = []
+            for target in spells.candidates(self, ability, self.current):
+                try:
+                    spells.EFFECTS[ability.effect](self, ability, self.current, target)
+                except RuleError:
+                    continue
+                valid.append(target)
+            if valid:
+                out[aid] = valid
+        return out
 
     def has_finished(self, color: Color) -> bool:
         finish = self.board.finish(color)
         return all(p >= finish for p in self.teams[color].pieces)
+
+    def pieces_on(self, node_id: str, *, exclude: Color | None = None) -> list[tuple[Color, int]]:
+        found = []
+        for c, team in self.teams.items():
+            if c == exclude:
+                continue
+            for i in range(len(team.pieces)):
+                n = self.node_of(c, i)
+                if n is not None and n.id == node_id and not self.is_finished(c, i):
+                    found.append((c, i))
+        return found
 
     # ================================================================ actions
     def roll(self, value: int, *, auto_move: bool = True) -> list[ev._Event]:
@@ -155,26 +251,31 @@ class Match:
             return self.take_events()
 
         self.phase = Phase.MOVE
-        legal = self.legal_pieces()
-        if not legal:
+        options = self.move_options()
+        if not options:
             self._emit(ev.TurnPassed(color=color, reason="noMoves"))
             self._end_turn()
             return self.take_events()
 
-        pieces = self.teams[color].pieces
-        if auto_move and len({pieces[i] for i in legal}) == 1:
-            self._move(legal[0])
+        team = self.teams[color]
+        if auto_move and len({(team.pieces[o.piece], o.lane) for o in options}) == 1:
+            self._move(options[0].piece, options[0].lane)
         return self.take_events()
 
-    def move(self, piece: int) -> list[ev._Event]:
+    def move(self, piece: int, lane: int | None = None) -> list[ev._Event]:
         if self.phase != Phase.MOVE or self.last_roll is None:
             raise RuleError("Roll the dice first.")
-        if piece not in self.legal_pieces():
+        options = [o for o in self.move_options() if o.piece == piece]
+        if not options:
             raise RuleError("That piece can't move with this roll.")
-        self._move(piece)
+        if options[0].lane is not None:
+            lane = lane if lane in (0, 1) else 0
+        self._move(piece, lane)
         return self.take_events()
 
     def cast(self, ability_id: str, target: dict) -> list[ev._Event]:
+        from . import spells
+
         color = self.current
         team = self.teams[color]
         ability = ABILITIES.get(ability_id)
@@ -184,12 +285,15 @@ class Match:
             raise RuleError("You can't cast right now.")
         if self.cast_this_turn:
             raise RuleError("You already cast an ability this turn.")
+        if ability.once_per_match and team.ult_used:
+            raise RuleError("Ultimates can be used once per match.")
         if team.mana < ability.cost:
             raise RuleError("Not enough mana.")
 
-        handler = _HANDLERS[ability_id]
-        apply = handler(self, ability, color, target)  # validates; raises RuleError
+        apply = spells.EFFECTS[ability.effect](self, ability, color, target)  # validates; raises RuleError
         self.cast_this_turn = True
+        if ability.once_per_match:
+            team.ult_used = True
         team.mana -= ability.cost
         spent = ev.ManaChanged(color=color, mana=team.mana, delta=-ability.cost, reason="cast")
         mark = len(self._events)
@@ -197,9 +301,18 @@ class Match:
         # Report the mana spend right after the AbilityCast event, before its effects.
         self._events.insert(mark + 1, spent)
 
-        if self.phase == Phase.MOVE and not self.is_over and not self.legal_pieces():
+        if not self.is_over and self.current == color and self.phase == Phase.MOVE and not self.move_options():
             self._emit(ev.TurnPassed(color=color, reason="noMoves"))
             self._end_turn()
+        return self.take_events()
+
+    # ---------------------------------------------------------------- practice
+    def practice_set_mana(self, color: Color, mana: int) -> list[ev._Event]:
+        team = self.teams[color]
+        new = max(0, min(self.config.max_mana, mana))
+        self._emit(ev.ManaChanged(color=color, mana=new, delta=new - team.mana, reason="practice"))
+        team.mana = new
+        team.ult_used = False
         return self.take_events()
 
     # ================================================================ internals
@@ -208,7 +321,7 @@ class Match:
 
     def _gain_mana(self, color: Color, amount: int, reason: str) -> None:
         team = self.teams[color]
-        new = min(self.config.max_mana, team.mana + amount)
+        new = max(0, min(self.config.max_mana, team.mana + amount))
         if new != team.mana:
             delta = new - team.mana
             team.mana = new
@@ -225,8 +338,35 @@ class Match:
         for i, st in enumerate(team.statuses):
             if st.pop("shield", None) is not None:
                 self._emit(ev.StatusChanged(color=color, piece=i, status="shield", active=False))
+        # Collapsed bridges get rebuilt after a while.
+        for nid in list(self.broken):
+            self.broken[nid] -= 1
+            if self.broken[nid] <= 0:
+                del self.broken[nid]
+                self.crumble[nid] = int(self.board.nodes[nid].hazard.get("uses", 3))
+                self._emit(ev.TileChanged(tile=nid, effect="none"))
+        # The owner's temporary tile effects wear off.
+        for nid, fx in list(self.tile_fx.items()):
+            if fx.owner == color:
+                fx.turns -= 1
+                if fx.turns <= 0:
+                    del self.tile_fx[nid]
+                    self._emit(ev.TileChanged(tile=nid, effect="none"))
         self._emit(ev.TurnStarted(color=color, turn=self.turn))
         self._gain_mana(color, self.config.mana_per_turn, "turn")
+        # Currents carry pieces along before the player acts.
+        for i in range(len(team.pieces)):
+            node = self.node_of(color, i)
+            if node is not None and node.hazard.get("type") == "current" and not self.is_finished(color, i):
+                p = team.pieces[i]
+                new = min(p + int(node.hazard.get("steps", 1)), self.board.finish(color) - 1)
+                if new != p:
+                    lane = self.board.lane_after(color, p, team.lanes[i], new, None)
+                    self._place(color, i, new, lane)
+                    self._emit(ev.Drifted(color=color, piece=i, start=p, end=new, lane=lane))
+                    self._land(color, i, "drift", 1)
+        if self.is_over:
+            return
 
     def _end_turn(self) -> None:
         color = self.current
@@ -245,57 +385,117 @@ class Match:
                 break
         self._begin_turn()
 
+    def _place(self, color: Color, piece: int, progress: int, lane: int) -> None:
+        self.teams[color].pieces[piece] = progress
+        self.teams[color].lanes[piece] = lane if self.board.is_fork(color, progress) else 0
+
     def _send_to_camp(self, color: Color, piece: int) -> None:
-        self.teams[color].pieces[piece] = CAMP
+        self._place(color, piece, CAMP, 0)
         for status in list(self.teams[color].statuses[piece]):
             del self.teams[color].statuses[piece][status]
             self._emit(ev.StatusChanged(color=color, piece=piece, status=status, active=False))
 
-    def _pieces_on(self, node_id: str, *, exclude: Color | None = None) -> list[tuple[Color, int]]:
-        found = []
-        for c, team in self.teams.items():
-            if c == exclude:
-                continue
-            for i, p in enumerate(team.pieces):
-                n = self.board.node(c, p)
-                if n is not None and n.id == node_id and p < self.board.finish(c):
-                    found.append((c, i))
-        return found
-
-    def _move(self, piece: int) -> None:
+    def _move(self, piece: int, lane: int | None) -> None:
         color, roll = self.current, self.last_roll or 0
         team = self.teams[color]
-        start = team.pieces[piece]
+        start, start_lane = team.pieces[piece], team.lanes[piece]
         end = self.target(color, piece, roll)
         assert end is not None
-        team.pieces[piece] = end
+        final_lane = self.board.lane_after(color, start, start_lane, end, lane)
+        self._place(color, piece, end, final_lane)
         path = [0] if start == CAMP else list(range(start + 1, end + 1))
-        self._emit(ev.Moved(color=color, piece=piece, start=start, end=end, path=path))
-
-        node = self.board.node(color, end)
-        captured = False
-        if node is not None and not self.board.is_immune(node):
-            for vc, vi in self._pieces_on(node.id, exclude=color):
-                if "shield" in self.teams[vc].statuses[vi]:
-                    self._emit(ev.Blocked(color=vc, piece=vi, reason="shield"))
-                    continue
-                at = self.teams[vc].pieces[vi]
-                self._send_to_camp(vc, vi)
-                self._emit(ev.Captured(color=vc, piece=vi, byColor=color, byPiece=piece, at=at))
-                self._gain_mana(vc, self.config.mana_knocked_out, "knockedOut")
-                captured = True
-                if HEROES[team.hero].passive == "bushido":
-                    self._gain_mana(color, self.config.mana_bushido, "passive")
-        if node is not None and node.kind == "shrine":
-            self._gain_mana(color, self.config.mana_shrine, "shrine")
-
+        self._emit(ev.Moved(color=color, piece=piece, start=start, end=end, lane=final_lane, path=path))
+        fell_before = team.pieces[piece]
+        captured = self._land(color, piece, "move")
+        if self.is_over:
+            return
         finished_piece, finished_player = self._check_finish(color, piece)
         if self.is_over:
             return
-        if not finished_player and (roll == 6 or captured or finished_piece):
+        fell = team.pieces[piece] == CAMP and fell_before != CAMP
+        if not finished_player and (roll == 6 or (captured and not fell) or finished_piece):
             self.phase = Phase.ROLL
         else:
             self._end_turn()
+
+    def capture_at(self, color: Color, piece: int) -> bool:
+        """The mover knocks out every unprotected enemy on its tile."""
+        node = self.node_of(color, piece)
+        if node is None or self.board.is_immune(node) or self.hazard_of(node) == "pit":
+            return False
+        captured = False
+        for vc, vi in self.pieces_on(node.id, exclude=color):
+            if "shield" in self.teams[vc].statuses[vi]:
+                self._emit(ev.Blocked(color=vc, piece=vi, reason="shield"))
+                continue
+            at = self.teams[vc].pieces[vi]
+            self._send_to_camp(vc, vi)
+            self._emit(ev.Captured(color=vc, piece=vi, byColor=color, byPiece=piece, at=at))
+            self._gain_mana(vc, self.config.mana_knocked_out, "knockedOut")
+            captured = True
+            if HEROES[self.teams[color].hero].passive == "bushido":
+                self._gain_mana(color, self.config.mana_bushido, "passive")
+        return captured
+
+    def _land(self, color: Color, piece: int, cause: Cause, depth: int = 0) -> bool:
+        """A piece arrived on a tile: captures (for moves/dashes), then the tile's effect."""
+        captured = self.capture_at(color, piece) if cause in ("move", "dash") else False
+        self._arrive(color, piece, cause, depth)
+        return captured
+
+    def _arrive(self, color: Color, piece: int, cause: Cause, depth: int) -> None:
+        node = self.node_of(color, piece)
+        if node is None or self.is_finished(color, piece):
+            return
+        team = self.teams[color]
+        p, lane = team.pieces[piece], team.lanes[piece]
+
+        if node.hazard.get("type") == "crumble" and node.id not in self.broken:
+            self.crumble[node.id] -= 1
+            if self.crumble[node.id] <= 0:
+                self.broken[node.id] = self.config.bridge_rebuild_turns
+                self._emit(ev.TileChanged(tile=node.id, effect="broken", turns=self.config.bridge_rebuild_turns))
+
+        effect = self.hazard_of(node)
+        if effect == "pit":
+            if "shield" in team.statuses[piece]:
+                self._emit(ev.Blocked(color=color, piece=piece, reason="shield"))
+                return
+            self._emit(ev.Fell(color=color, piece=piece, at=p, tile=node.id))
+            self._send_to_camp(color, piece)
+            self._gain_mana(color, self.config.mana_knocked_out, "knockedOut")
+            return
+        if effect == "slide" and cause != "slide" and depth < self.config.max_chain:
+            new = max(0, min(p + int(node.hazard.get("steps", 2)), self.board.finish(color) - 1))
+            if new != p:
+                new_lane = self.board.lane_after(color, p, lane, new, None)
+                self._place(color, piece, new, new_lane)
+                self._emit(ev.Slid(color=color, piece=piece, start=p, end=new, lane=new_lane))
+                self._land(color, piece, "slide", depth + 1)
+                return
+        if effect == "portal" and cause != "portal" and depth < self.config.max_chain:
+            loc = self.board.locate(color, node.hazard["to"])
+            # Portals only ever carry you forward along your own route.
+            if loc is not None and p < loc[0] < self.board.finish(color):
+                self._place(color, piece, loc[0], loc[1])
+                self._emit(ev.Portaled(color=color, piece=piece, start=p, end=loc[0], lane=loc[1]))
+                self._land(color, piece, "portal", depth + 1)
+                return
+        fx = self.tile_fx.get(node.id)
+        if fx and fx.kind == "trap" and fx.owner != color:
+            del self.tile_fx[node.id]
+            self._emit(ev.TileChanged(tile=node.id, effect="none"))
+            if "shield" in team.statuses[piece]:
+                self._emit(ev.Blocked(color=color, piece=piece, reason="shield"))
+            else:
+                team.statuses[piece]["rooted"] = 1
+                self._emit(ev.StatusChanged(color=color, piece=piece, status="rooted", active=True))
+                self.knock_back(color, piece, 2, fx.owner, "snare_trap", depth=depth + 1)
+            return
+        if fx and fx.kind == "fire" and fx.owner != color:
+            self._gain_mana(color, -self.config.mana_burn, "burned")
+        if node.kind == "shrine":
+            self._gain_mana(color, self.config.mana_shrine, "shrine")
 
     def _check_finish(self, color: Color, piece: int) -> tuple[bool, bool]:
         """Handle a piece reaching the goal. Returns (piece_finished, player_finished)."""
@@ -314,22 +514,27 @@ class Match:
             self._emit(ev.GameOver(ranking=list(self.ranking)))
         return True, finished_player
 
-    def knock_back(self, color: Color, piece: int, amount: int, by: Color, ability: str) -> None:
-        p = self.teams[color].pieces[piece]
-        node = self.board.node(color, p)
+    def knock_back(self, color: Color, piece: int, amount: int, by: Color, ability: str, *, depth: int = 0) -> None:
+        team = self.teams[color]
+        p, lane = team.pieces[piece], team.lanes[piece]
+        node = self.board.node(color, p, lane)
         if node is None or self.board.is_immune(node):
             self._emit(ev.Blocked(color=color, piece=piece, reason="safeTile"))
             return
-        if "shield" in self.teams[color].statuses[piece]:
+        if "shield" in team.statuses[piece]:
             self._emit(ev.Blocked(color=color, piece=piece, reason="shield"))
             return
         new = max(0, p - amount)  # never past the start tile
-        self.teams[color].pieces[piece] = new
-        self._emit(ev.KnockedBack(color=color, piece=piece, start=p, end=new, byColor=by, ability=ability))
+        new_lane = self.board.lane_after(color, p, lane, new, None)
+        self._place(color, piece, new, new_lane)
+        self._emit(
+            ev.KnockedBack(color=color, piece=piece, start=p, end=new, lane=new_lane, byColor=by, ability=ability)
+        )
         self._gain_mana(color, self.config.mana_knocked_back, "knockedBack")
+        self._land(color, piece, "knockback", depth + 1)
 
     # ================================================================ views
-    def snapshot(self) -> dict:
+    def snapshot(self, *, with_targets: bool = True) -> dict:
         return {
             "mapId": self.board.id,
             "turnOrder": [c.value for c in self.order],
@@ -338,187 +543,28 @@ class Match:
             "turn": self.turn,
             "lastRoll": self.last_roll,
             "legalPieces": self.legal_pieces(),
+            "moveOptions": [{"piece": o.piece, "lane": o.lane, "to": o.to} for o in self.move_options()],
             "castUsed": self.cast_this_turn,
+            "castTargets": self.cast_targets() if with_targets and not self.is_over else {},
             "ranking": [c.value for c in self.ranking],
+            "tiles": {
+                **{nid: {"effect": "broken", "turns": t, "owner": None} for nid, t in sorted(self.broken.items())},
+                **{
+                    nid: {"effect": fx.kind, "turns": fx.turns, "owner": fx.owner.value}
+                    for nid, fx in sorted(self.tile_fx.items())
+                },
+            },
             "teams": {
                 c.value: {
                     "hero": t.hero,
                     "pieces": list(t.pieces),
+                    "lanes": list(t.lanes),
                     "mana": t.mana,
                     "maxMana": self.config.max_mana,
                     "finish": self.board.finish(c),
+                    "ultUsed": t.ult_used,
                     "statuses": [sorted(st) for st in t.statuses],
                 }
                 for c, t in self.teams.items()
             },
         }
-
-
-# ==================================================================== abilities
-# Each handler validates the target and returns a function that applies it.
-
-
-def _own_piece_on_track(match: Match, color: Color, target: dict) -> tuple[int, int, Node]:
-    piece = target.get("piece")
-    team = match.teams[color]
-    if not isinstance(piece, int) or not 0 <= piece < len(team.pieces):
-        raise RuleError("Pick one of your pieces.")
-    p = team.pieces[piece]
-    node = match.board.node(color, p)
-    if node is None or node.loop_index is None:
-        raise RuleError("That piece must be out on the trail.")
-    return piece, p, node
-
-
-def _line(match: Match, ability, color: Color, target: dict):
-    piece, p, _ = _own_piece_on_track(match, color, target)
-    route = match.board.routes[color]
-    reach = ability.params["reach"]
-    tiles: list[str] = []
-    for k in range(1, reach + 1):
-        if p + k >= len(route):
-            break
-        node = match.board.nodes[route[p + k]]
-        if node.loop_index is None:
-            break  # the line stops at the home path
-        tiles.append(node.id)
-
-    def apply() -> None:
-        match._emit(
-            ev.AbilityCast(color=color, hero=match.teams[color].hero, ability=ability.id, piece=piece, tiles=tiles)
-        )
-        for nid in tiles:
-            victims = match._pieces_on(nid, exclude=color)
-            for vc, vi in victims:
-                match.knock_back(vc, vi, ability.params["knockback"], color, ability.id)
-            if victims and ability.params.get("firstOnly"):
-                break
-
-    return apply
-
-
-def _enemy_in_range(match: Match, ability, color: Color, target: dict) -> tuple[Color, int, Node]:
-    try:
-        tc = Color(target.get("color"))
-    except ValueError:
-        raise RuleError("Pick an enemy piece.") from None
-    tp = target.get("piece")
-    if tc == color or tc not in match.teams or not isinstance(tp, int) or not 0 <= tp < len(match.teams[tc].pieces):
-        raise RuleError("Pick an enemy piece.")
-    node = match.node_of(tc, tp)
-    if node is None or node.loop_index is None or match.teams[tc].pieces[tp] >= match.board.finish(tc):
-        raise RuleError("That piece isn't on the trail.")
-    if match.board.is_immune(node):
-        raise RuleError("That piece is standing on a safe tile.")
-    reach = ability.params["range"]
-    mine = [match.node_of(color, i) for i in range(len(match.teams[color].pieces))]
-    if not any(n is not None and (d := match.board.loop_distance(n, node)) is not None and d <= reach for n in mine):
-        raise RuleError(f"Out of range: you need a piece within {reach} tiles.")
-    return tc, tp, node
-
-
-def _zap(match: Match, ability, color: Color, target: dict):
-    tc, tp, node = _enemy_in_range(match, ability, color, target)
-
-    def apply() -> None:
-        match._emit(
-            ev.AbilityCast(
-                color=color,
-                hero=match.teams[color].hero,
-                ability=ability.id,
-                targetColor=tc,
-                targetPiece=tp,
-                tiles=[node.id],
-            )
-        )
-        match.knock_back(tc, tp, ability.params["knockback"], color, ability.id)
-
-    return apply
-
-
-def _roots(match: Match, ability, color: Color, target: dict):
-    tc, tp, node = _enemy_in_range(match, ability, color, target)
-
-    def apply() -> None:
-        match._emit(
-            ev.AbilityCast(
-                color=color,
-                hero=match.teams[color].hero,
-                ability=ability.id,
-                targetColor=tc,
-                targetPiece=tp,
-                tiles=[node.id],
-            )
-        )
-        st = match.teams[tc].statuses[tp]
-        if "shield" in st:
-            match._emit(ev.Blocked(color=tc, piece=tp, reason="shield"))
-            return
-        st["rooted"] = ability.params["turns"]
-        match._emit(ev.StatusChanged(color=tc, piece=tp, status="rooted", active=True))
-
-    return apply
-
-
-def _blink(match: Match, ability, color: Color, target: dict):
-    piece = target.get("piece")
-    steps = target.get("steps", ability.params["maxSteps"])
-    team = match.teams[color]
-    if not isinstance(piece, int) or not 0 <= piece < len(team.pieces):
-        raise RuleError("Pick one of your pieces.")
-    if not isinstance(steps, int) or not 1 <= steps <= ability.params["maxSteps"]:
-        raise RuleError(f"Blink 1 to {ability.params['maxSteps']} tiles.")
-    p = team.pieces[piece]
-    finish = match.board.finish(color)
-    if p == CAMP or p >= finish:
-        raise RuleError("That piece must be out on the board.")
-    if p + steps > finish:
-        raise RuleError("That would overshoot the goal.")
-
-    def apply() -> None:
-        node_from = match.board.node(color, p)
-        node_to = match.board.node(color, p + steps)
-        match._emit(
-            ev.AbilityCast(
-                color=color,
-                hero=team.hero,
-                ability=ability.id,
-                piece=piece,
-                tiles=[n.id for n in (node_from, node_to) if n],
-            )
-        )
-        team.pieces[piece] = p + steps
-        match._emit(ev.Teleported(color=color, piece=piece, start=p, end=p + steps))
-        if node_to is not None and node_to.kind == "shrine":
-            match._gain_mana(color, match.config.mana_shrine, "shrine")
-        match._check_finish(color, piece)
-
-    return apply
-
-
-def _shield(match: Match, ability, color: Color, target: dict):
-    piece = target.get("piece")
-    team = match.teams[color]
-    if not isinstance(piece, int) or not 0 <= piece < len(team.pieces):
-        raise RuleError("Pick one of your pieces.")
-    if team.pieces[piece] == CAMP or team.pieces[piece] >= match.board.finish(color):
-        raise RuleError("That piece must be out on the board.")
-
-    def apply() -> None:
-        match._emit(ev.AbilityCast(color=color, hero=team.hero, ability=ability.id, piece=piece))
-        team.statuses[piece]["shield"] = 1
-        match._emit(ev.StatusChanged(color=color, piece=piece, status="shield", active=True))
-
-    return apply
-
-
-_HANDLERS = {
-    "katana_slash": _line,
-    "fire_breath": _line,
-    "piercing_arrow": _line,
-    "zap": _zap,
-    "entangling_roots": _roots,
-    "blink": _blink,
-    "shield_wall": _shield,
-}
-assert set(_HANDLERS) == set(ABILITIES), "every ability needs a handler"

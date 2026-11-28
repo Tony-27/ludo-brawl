@@ -20,9 +20,40 @@ export type SceneCue =
   | 'mana'
   | 'home'
   | 'finish'
-  | 'gameOver';
+  | 'gameOver'
+  | 'fall'
+  | 'slide'
+  | 'portal'
+  | 'crumble'
+  | 'fire'
+  | 'meteor'
+  | 'trap'
+  | 'roots';
+
+type Ev<T extends GameEvent['type']> = Extract<GameEvent, { type: T }>;
 
 const IMPACT_WORDS = ['BONK!', 'POW!', 'WHAM!', 'SMASH!', 'KO!', 'THWACK!'];
+const ABILITY_TITLES: Record<string, string> = {
+  quick_draw: 'QUICK DRAW',
+  katana_slash: 'KATANA SLASH',
+  thousand_cuts: 'THOUSAND CUTS',
+  zap: 'ZAP!',
+  blink: 'BLINK',
+  meteor: 'METEOR',
+  shield_wall: 'SHIELD WALL',
+  shield_bash: 'SHIELD BASH',
+  rally: 'RALLY!',
+  piercing_arrow: 'PIERCING ARROW',
+  snare_trap: 'SNARE TRAP',
+  rain_of_arrows: 'RAIN OF ARROWS',
+  entangling_roots: 'ROOTS!',
+  wild_growth: 'WILD GROWTH',
+  overgrowth: 'OVERGROWTH',
+  dive: 'DIVE!',
+  fire_breath: 'FIRE BREATH',
+  inferno: 'INFERNO',
+};
+const ULTIMATES = new Set(['thousand_cuts', 'meteor', 'rally', 'rain_of_arrows', 'overgrowth', 'inferno']);
 
 /**
  * Plays server events in order as choreographed beats (camera + characters +
@@ -34,6 +65,8 @@ export class EventPlayer {
   private queue: EventsMessage[] = [];
   private running = false;
   private disposed = false;
+  /** Positions this player believes in while animating (progress, lane). */
+  private lanes = new Map<string, number>();
 
   constructor(private gs: GameScene) {}
 
@@ -46,7 +79,7 @@ export class EventPlayer {
     if (!this.running) void this.drain();
   }
 
-  /** A snapshot with no events (lobby change, presence, resync). */
+  /** A snapshot with no events (lobby change, presence, practice, resync). */
   snapshot(room: RoomView) {
     if (this.running) {
       this.room = room;
@@ -78,9 +111,10 @@ export class EventPlayer {
     this.gs.timeScale = 1;
     this.running = false;
     this.gs.refreshHighlights();
+    this.gs.frameInteraction();
   }
 
-  /** Put every piece where the server says it is. */
+  /** Put every piece and tile effect where the server says it is. */
   reconcile(room: RoomView, instant: boolean) {
     this.room = room;
     const match = room.match;
@@ -90,26 +124,38 @@ export class EventPlayer {
       team.pieces.forEach((progress, i) => {
         const actor = this.gs.actor(color, i);
         if (!actor) return;
-        const at = this.spot(color, progress, i);
-        if (instant || Vector3.DistanceSquared(actor.position, at) > 0.01) {
-          if (!actor.busy) actor.place(at, this.gs.layout.forward(color, progress));
+        const lane = team.lanes[i] ?? 0;
+        this.lanes.set(`${color}${i}`, lane);
+        const at = this.spot(color, progress, i, lane);
+        if ((instant || Vector3.DistanceSquared(actor.position, at) > 0.01) && !actor.busy) {
+          actor.place(at, this.gs.layout.forward(color, progress, lane));
+          actor.body.scaling.setAll(1);
         }
         const statuses = team.statuses[i] ?? [];
         actor.setStatus('shield', statuses.includes('shield'));
         actor.setStatus('rooted', statuses.includes('rooted'));
       });
     }
+    // Tile effects: clear everything, then apply the current set.
+    const current = new Set(Object.keys(match.tiles));
+    for (const id of this.shownTiles) if (!current.has(id)) this.gs.world.setTileEffect(id, 'none');
+    for (const [id, fx] of Object.entries(match.tiles)) {
+      this.gs.world.setTileEffect(id, fx.effect, fx.effect !== 'trap' || fx.owner === this.gs.myColor);
+    }
+    this.shownTiles = current;
   }
 
+  private shownTiles = new Set<string>();
+
   /** Where a piece stands, spreading out pieces that share a tile. */
-  private spot(color: Color, progress: number, piece: number): Vector3 {
-    const base = this.gs.layout.position(color, progress, piece);
-    const node = this.gs.layout.nodeAt(color, progress);
+  private spot(color: Color, progress: number, piece: number, lane: number): Vector3 {
+    const base = this.gs.layout.position(color, progress, piece, lane);
+    const node = this.gs.layout.nodeAt(color, progress, lane);
     if (!node || !this.room?.match) return base;
     const sharing: string[] = [];
-    for (const [c, team] of Object.entries(this.room.match.teams) as [Color, { pieces: number[] }][]) {
+    for (const [c, team] of Object.entries(this.room.match.teams) as [Color, { pieces: number[]; lanes: number[] }][]) {
       team.pieces.forEach((p, i) => {
-        if (this.gs.layout.nodeAt(c, p)?.id === node.id) sharing.push(`${c}${i}`);
+        if (this.gs.layout.nodeAt(c, p, team.lanes[i] ?? 0)?.id === node.id) sharing.push(`${c}${i}`);
       });
     }
     if (sharing.length < 2) return base;
@@ -133,6 +179,10 @@ export class EventPlayer {
     return at;
   }
 
+  private positions(color: Color, piece: number, path: number[], end: number, lane: number): Vector3[] {
+    return path.map((p) => this.gs.layout.position(color, p, piece, this.gs.layout.laneAlong(color, path[0], end, lane, p)));
+  }
+
   // ------------------------------------------------------------------ choreography
   private async play(events: GameEvent[]) {
     for (let i = 0; i < events.length; i++) {
@@ -150,15 +200,14 @@ export class EventPlayer {
           await this.rolled(e.color, e.value);
           break;
         case 'turnPassed': {
-          const at = this.focus(e.color);
-          this.gs.fx.text(at, e.reason === 'threeSixes' ? 'THREE SIXES!' : 'NO MOVES', '#ffffff', 0.8);
+          this.gs.fx.text(this.focus(e.color), e.reason === 'threeSixes' ? 'THREE SIXES!' : 'NO MOVES', '#ffffff', 0.8);
           await this.gs.tween.wait(0.6);
           break;
         }
         case 'moved': {
           const attack = next?.type === 'captured' && next.byColor === e.color && next.byPiece === e.piece ? next : null;
-          await this.moved(e.color, e.piece, e.from, e.to, e.path, attack);
-          if (attack) i++; // the capture was played as part of the move
+          await this.moved(e, attack);
+          if (attack) i++;
           break;
         }
         case 'captured':
@@ -168,11 +217,40 @@ export class EventPlayer {
           await this.cast(e);
           break;
         case 'knockedBack':
-          await this.knockedBack(e.color, e.piece, e.from, e.to, e.byColor);
+          await this.knockedBack(e);
           break;
         case 'teleported':
-          await this.teleported(e.color, e.piece, e.from, e.to);
+          await this.teleported(e.color, e.piece, e.to, e.lane, 'blink');
           break;
+        case 'portaled':
+          this.gs.onCue('portal');
+          await this.teleported(e.color, e.piece, e.to, e.lane, 'portal');
+          break;
+        case 'slid':
+        case 'drifted':
+          await this.slid(e);
+          break;
+        case 'swapped':
+          await this.swapped(e);
+          break;
+        case 'fell':
+          await this.fell(e);
+          break;
+        case 'tileChanged': {
+          const n = this.gs.layout.nodes.get(e.tile);
+          const visible = e.effect !== 'trap' || e.owner === this.gs.myColor;
+          this.gs.world.setTileEffect(e.tile, e.effect, visible);
+          if (e.effect === 'none') this.shownTiles.delete(e.tile);
+          else this.shownTiles.add(e.tile);
+          if (n && e.effect === 'broken') {
+            this.gs.onCue('crumble');
+            this.gs.fx.dust(Vector3.FromArray(n.pos), 30);
+            this.gs.fx.text(Vector3.FromArray(n.pos), 'CRUMBLE!', '#ffb37a', 0.7);
+            this.gs.director.addShake(0.25);
+            await this.gs.tween.wait(0.3);
+          }
+          break;
+        }
         case 'blocked': {
           const a = this.gs.actor(e.color, e.piece);
           if (a) {
@@ -184,15 +262,22 @@ export class EventPlayer {
           await this.gs.tween.wait(0.35);
           break;
         }
-        case 'statusChanged':
-          this.gs.actor(e.color, e.piece)?.setStatus(e.status, e.active);
+        case 'statusChanged': {
+          const a = this.gs.actor(e.color, e.piece);
+          a?.setStatus(e.status, e.active);
+          if (a && e.active && e.status === 'rooted') this.gs.onCue('roots');
           break;
+        }
         case 'manaChanged':
           if (e.delta > 0 && (e.reason === 'shrine' || e.reason === 'passive')) {
             const at = this.focus(e.color);
             this.gs.fx.manaGain(at);
             this.gs.fx.text(at, `+${e.delta} MANA`, '#7fc8ff', 0.6);
             this.gs.onCue('mana');
+          } else if (e.reason === 'burned') {
+            const at = this.focus(e.color);
+            this.gs.onCue('fire');
+            this.gs.fx.text(at, 'BURNED -1', '#ff9a5a', 0.6);
           }
           break;
         case 'pieceFinished': {
@@ -240,39 +325,30 @@ export class EventPlayer {
     await this.gs.tween.wait(0.15);
   }
 
-  private tilePositions(color: Color, piece: number, progresses: number[]): Vector3[] {
-    return progresses.map((p) => this.gs.layout.position(color, p, piece));
-  }
-
-  private async moved(
-    color: Color,
-    piece: number,
-    from: number,
-    to: number,
-    path: number[],
-    attack: { color: Color; piece: number } | null,
-  ) {
-    const actor = this.gs.actor(color, piece);
+  private async moved(e: Ev<'moved'>, attack: { color: Color; piece: number } | null) {
+    const actor = this.gs.actor(e.color, e.piece);
     if (!actor) return;
     this.gs.director.followTarget(() => actor.position, 12, 0.92);
-    if (from < 0) {
+    const vfx = this.gs.skinFor(e.color).vfx;
+    if (e.from < 0) {
       this.gs.onCue('summon');
-      const target = this.gs.layout.position(color, 0, piece);
-      this.gs.fx.blink(actor.position, this.gs.skinFor(color).vfx);
+      const target = this.gs.layout.position(e.color, 0, e.piece, e.lane);
+      this.gs.fx.blink(actor.position, vfx);
       await actor.leap(target, 2.2, 0.7, true);
       this.gs.fx.dust(target, 16);
-      if (attack) await this.captured(color, piece, attack.color, attack.piece, true);
+      if (attack) await this.captured(e.color, e.piece, attack.color, attack.piece, true);
       return;
     }
-    const steps = this.tilePositions(color, piece, path);
+    const steps = this.positions(e.color, e.piece, e.path, e.to, e.lane);
     const run = attack ? steps.slice(0, -1) : steps;
+    const speed = e.via === 'dash' ? 0.12 : e.via === 'rally' ? 0.2 : 0.26;
+    if (e.via === 'dash') this.gs.fx.blink(actor.position, vfx);
     if (run.length) {
-      const stepCue = setInterval(() => this.gs.onCue('step'), 280 / this.gs.timeScale);
-      await actor.runAlong(run, 0.26);
+      const stepCue = setInterval(() => this.gs.onCue('step'), (speed * 1000) / this.gs.timeScale);
+      await actor.runAlong(run, speed);
       clearInterval(stepCue);
     }
-    if (attack) await this.captured(color, piece, attack.color, attack.piece);
-    void to;
+    if (attack) await this.captured(e.color, e.piece, attack.color, attack.piece);
   }
 
   /** The attacker leaps onto the victim's tile and sends it flying home. */
@@ -283,8 +359,7 @@ export class EventPlayer {
     const target = victim.position.clone();
     victim.faceTo(attacker.position);
     attacker.faceTo(target);
-    // Cinematic: low, close, slightly slowed.
-    this.gs.director.cinematic({ target: target, radius: 7, beta: 1.1 }, 6);
+    this.gs.director.cinematic({ target, radius: 7, beta: 1.1 }, 6);
     this.gs.focusDepth(target);
     this.gs.onCue('charge');
     void victim.oneShot('block', 1.2);
@@ -297,11 +372,9 @@ export class EventPlayer {
     }
     this.gs.timeScale = 1;
     this.gs.onCue('hit');
-    const color3 = this.gs.skinFor(byColor).vfx;
-    this.gs.fx.impact(target, color3, true);
+    this.gs.fx.impact(target, this.gs.skinFor(byColor).vfx, true);
     this.gs.fx.text(target, IMPACT_WORDS[Math.floor(Math.random() * IMPACT_WORDS.length)]);
     this.gs.director.addShake(0.5);
-    // Hit-stop for weight.
     this.gs.timeScale = 0.15;
     await this.gs.tween.wait(0.025);
     this.gs.timeScale = 1;
@@ -313,104 +386,244 @@ export class EventPlayer {
     this.gs.fx.dust(home, 20);
   }
 
-  private async cast(e: Extract<GameEvent, { type: 'abilityCast' }>) {
-    const skin = this.gs.skinFor(e.color);
-    const vfx = skin.vfx;
-    // Caster: the named piece, or (for targeted spells) the closest piece to the target.
-    let caster: CharacterActor | undefined = e.piece != null ? this.gs.actor(e.color, e.piece) : undefined;
-    let targetActor: CharacterActor | undefined;
-    if (e.targetColor && e.targetPiece != null) targetActor = this.gs.actor(e.targetColor, e.targetPiece);
-    if (!caster) {
-      const team = this.room?.match?.teams[e.color];
-      let best = Infinity;
-      team?.pieces.forEach((p, i) => {
-        const a = this.gs.actor(e.color, i);
-        if (!a || p < 0) return;
-        const d = targetActor ? Vector3.Distance(a.position, targetActor.position) : 0;
-        if (d < best) {
-          best = d;
-          caster = a;
-        }
-      });
-    }
+  private casterFor(e: Ev<'abilityCast'>): CharacterActor | undefined {
+    if (e.piece != null) return this.gs.actor(e.color, e.piece);
+    const target = e.targetColor && e.targetPiece != null ? this.gs.actor(e.targetColor, e.targetPiece) : undefined;
+    const tile = e.tiles[0] ? this.gs.layout.nodes.get(e.tiles[0]) : undefined;
+    const goal = target?.position ?? (tile ? Vector3.FromArray(tile.pos) : null);
+    const team = this.room?.match?.teams[e.color];
+    let best: CharacterActor | undefined;
+    let bestD = Infinity;
+    team?.pieces.forEach((p, i) => {
+      const a = this.gs.actor(e.color, i);
+      if (!a || p < 0 || p >= team.finish) return;
+      const d = goal ? Vector3.Distance(a.position, goal) : -p;
+      if (d < bestD) {
+        bestD = d;
+        best = a;
+      }
+    });
+    return best;
+  }
+
+  private async cast(e: Ev<'abilityCast'>) {
+    const vfx = this.gs.skinFor(e.color).vfx;
+    const caster = this.casterFor(e);
+    const targetActor = e.targetColor && e.targetPiece != null ? this.gs.actor(e.targetColor, e.targetPiece) : undefined;
     const at = caster?.position.clone() ?? this.focus(e.color);
-    this.gs.director.cinematic({ target: at, radius: 6.5, beta: 1.05 }, 5);
+    const tiles = e.tiles.map((id) => this.gs.layout.nodes.get(id)).filter(Boolean).map((n) => Vector3.FromArray(n!.pos));
+    const ult = ULTIMATES.has(e.ability);
+    const title = ABILITY_TITLES[e.ability] ?? e.ability.toUpperCase();
+
+    this.gs.director.cinematic({ target: at, radius: ult ? 9 : 6.5, beta: ult ? 0.95 : 1.05 }, 5);
     this.gs.focusDepth(at);
     this.gs.onCue('cast');
-    const tiles = e.tiles.map((id) => this.gs.layout.nodes.get(id)).filter(Boolean).map((n) => Vector3.FromArray(n!.pos));
+    this.gs.fx.text(at, title, ult ? '#ffd76a' : '#ffe9a8', ult ? 1.1 : 0.7);
+    if (ult) {
+      this.gs.fx.shockwave(at, vfx);
+      this.gs.timeScale = 0.6;
+    }
 
     switch (e.ability) {
+      case 'quick_draw':
+      case 'dive':
+        if (caster) await caster.oneShot('cast', 1.6);
+        break;
       case 'katana_slash':
       case 'fire_breath':
       case 'piercing_arrow': {
         if (caster && tiles.length) caster.faceTo(tiles[tiles.length - 1]);
-        this.gs.fx.text(at, e.ability === 'katana_slash' ? 'KATANA SLASH' : e.ability.replace('_', ' ').toUpperCase(), '#ffe9a8', 0.7);
         if (caster) await caster.oneShot('cast', 1.25);
-        this.gs.onCue('slash');
+        this.gs.onCue(e.ability === 'fire_breath' ? 'fire' : 'slash');
         const dir = tiles.length ? tiles[tiles.length - 1].subtract(at).normalize() : Vector3.Forward();
-        this.gs.fx.slash(at, dir, vfx, Math.max(1.5, tiles.length));
+        if (e.ability === 'fire_breath') for (const t of tiles) this.gs.fx.sparkle(t, [1, 0.45, 0.1], 40);
+        else this.gs.fx.slash(at, dir, vfx, Math.max(1.5, Math.min(tiles.length, 3)));
         for (const t of tiles) this.gs.fx.impact(t, vfx, false);
         this.gs.director.addShake(0.25);
         await this.gs.tween.wait(0.2);
         break;
       }
       case 'zap':
-      case 'entangling_roots': {
+      case 'entangling_roots':
+      case 'shield_bash':
+      case 'wild_growth': {
         const target = targetActor?.position ?? tiles[0] ?? at;
         caster?.faceTo(target);
-        this.gs.fx.text(at, e.ability === 'zap' ? 'ZAP!' : 'ROOTS!', '#bfe6ff', 0.7);
-        if (caster) void caster.play('cast', { loop: false, speed: 1.3 });
-        await this.gs.tween.wait(0.45);
+        if (caster) void caster.play(e.ability === 'shield_bash' ? 'attack' : 'cast', { loop: false, speed: 1.3 });
+        await this.gs.tween.wait(0.4);
         this.gs.director.cinematic({ target, radius: 7.5, beta: 1.0 }, 6);
-        this.gs.onCue('zap');
-        if (e.ability === 'zap') this.gs.fx.lightning(target.add(new Vector3(0.5, 9, -0.3)), target.add(new Vector3(0, 0.6, 0)), vfx);
-        this.gs.fx.impact(target, vfx, e.ability === 'zap');
+        if (e.ability === 'zap') {
+          this.gs.onCue('zap');
+          this.gs.fx.lightning(target.add(new Vector3(0.5, 9, -0.3)), target.add(new Vector3(0, 0.6, 0)), vfx);
+        } else if (e.ability === 'shield_bash') {
+          this.gs.onCue('hit');
+        } else {
+          this.gs.onCue('roots');
+          this.gs.fx.sparkle(target, [0.4, 0.9, 0.35], 60);
+        }
+        this.gs.fx.impact(target, vfx, e.ability !== 'wild_growth');
         this.gs.director.addShake(0.3);
         await this.gs.tween.wait(0.25);
         caster?.play('idle');
         break;
       }
-      case 'blink': {
-        this.gs.fx.text(at, 'BLINK', '#d8b8ff', 0.7);
-        if (caster) await caster.oneShot('cast', 1.5);
+      case 'meteor': {
+        const target = tiles[0] ?? at;
+        caster?.faceTo(target);
+        if (caster) void caster.play('cast', { loop: false, speed: 1.1 });
+        this.gs.director.cinematic({ target, radius: 10, beta: 0.9 }, 4);
+        await this.gs.tween.wait(0.5);
+        this.gs.onCue('meteor');
+        this.gs.fx.lightning(target.add(new Vector3(6, 18, -4)), target, [1, 0.45, 0.1]);
+        this.gs.fx.impact(target, [1, 0.45, 0.1], true);
+        for (const t of tiles.slice(1)) this.gs.fx.impact(t, [1, 0.5, 0.15], false);
+        this.gs.director.addShake(0.9);
+        await this.gs.tween.wait(0.3);
         break;
       }
-      case 'shield_wall': {
+      case 'snare_trap': {
+        if (caster) await caster.oneShot('cast', 1.4);
+        this.gs.onCue('trap');
+        break;
+      }
+      case 'blink':
+        if (caster) await caster.oneShot('cast', 1.5);
+        break;
+      case 'shield_wall':
         if (caster) await caster.oneShot('block', 1.2);
         this.gs.fx.blink(at, [1, 0.9, 0.5]);
         break;
+      case 'rally': {
+        const team = this.room?.match?.teams[e.color];
+        team?.pieces.forEach((p, i) => {
+          const a = this.gs.actor(e.color, i);
+          if (a && p >= 0 && p < team.finish) {
+            void a.oneShot('victory', 1.5);
+            this.gs.fx.sparkle(a.position, [1, 0.9, 0.5], 50);
+          }
+        });
+        await this.gs.tween.wait(0.6);
+        break;
+      }
+      case 'thousand_cuts':
+      case 'rain_of_arrows':
+      case 'inferno':
+      case 'overgrowth': {
+        if (caster) void caster.play('cast', { loop: false, speed: 1.2 });
+        await this.gs.tween.wait(0.35);
+        const color: [number, number, number] =
+          e.ability === 'inferno' ? [1, 0.45, 0.1] : e.ability === 'overgrowth' ? [0.4, 0.95, 0.35] : vfx;
+        this.gs.onCue(e.ability === 'inferno' ? 'fire' : e.ability === 'overgrowth' ? 'roots' : 'slash');
+        for (const t of tiles) {
+          if (e.ability === 'rain_of_arrows') this.gs.fx.lightning(t.add(new Vector3(1, 7, 0)), t.add(new Vector3(0, 0.4, 0)), [1, 0.9, 0.6]);
+          else if (e.ability === 'thousand_cuts') this.gs.fx.slash(t, Vector3.Right(), color, 1.2);
+          this.gs.fx.impact(t, color, false);
+        }
+        this.gs.director.addShake(0.6);
+        await this.gs.tween.wait(0.35);
+        break;
       }
     }
+    this.gs.timeScale = 1;
   }
 
-  private async knockedBack(color: Color, piece: number, from: number, to: number, byColor: Color) {
-    const actor = this.gs.actor(color, piece);
+  private async knockedBack(e: Ev<'knockedBack'>) {
+    const actor = this.gs.actor(e.color, e.piece);
     if (!actor) return;
     const progresses: number[] = [];
-    for (let p = from - 1; p >= to; p--) progresses.push(p);
-    const pts = this.tilePositions(color, piece, progresses.length ? progresses : [to]);
+    for (let p = e.from - 1; p >= e.to; p--) progresses.push(p);
+    const pts = progresses.length
+      ? progresses.map((p) => this.gs.layout.position(e.color, p, e.piece, this.gs.layout.laneAlong(e.color, e.from, e.to, e.lane, p)))
+      : [this.gs.layout.position(e.color, e.to, e.piece, e.lane)];
     this.gs.onCue('hit');
-    this.gs.fx.impact(actor.position, this.gs.skinFor(byColor).vfx, false);
-    this.gs.fx.text(actor.position, `-${from - to}`, '#ff8a8a', 0.8);
+    this.gs.fx.impact(actor.position, this.gs.skinFor(e.byColor).vfx, false);
+    this.gs.fx.text(actor.position, `-${e.from - e.to}`, '#ff8a8a', 0.8);
     this.gs.director.followTarget(() => actor.position, 10, 0.95);
     await actor.knockedBack(pts, 0.35 + pts.length * 0.08);
     this.gs.fx.dust(actor.position, 12);
   }
 
-  private async teleported(color: Color, piece: number, from: number, to: number) {
+  private async teleported(color: Color, piece: number, to: number, lane: number, kind: 'blink' | 'portal') {
     const actor = this.gs.actor(color, piece);
     if (!actor) return;
-    const vfx = this.gs.skinFor(color).vfx;
-    this.gs.onCue('blink');
+    const vfx: [number, number, number] = kind === 'portal' ? [0.7, 0.35, 1] : this.gs.skinFor(color).vfx;
+    if (kind === 'blink') this.gs.onCue('blink');
     this.gs.fx.blink(actor.position, vfx);
     await this.gs.tween.tween(0.18, (t) => actor.body.scaling.setAll(1 - t));
-    const dest = this.gs.layout.position(color, to, piece);
-    actor.place(dest, this.gs.layout.forward(color, to));
+    const dest = this.gs.layout.position(color, to, piece, lane);
+    actor.place(dest, this.gs.layout.forward(color, to, lane));
     this.gs.director.followTarget(() => actor.position, 10, 0.95);
     this.gs.fx.blink(dest, vfx);
     await this.gs.tween.tween(0.22, (t) => actor.body.scaling.setAll(t));
     actor.body.scaling.setAll(1);
-    void from;
+  }
+
+  private async slid(e: Ev<'slid'> | Ev<'drifted'>) {
+    const actor = this.gs.actor(e.color, e.piece);
+    if (!actor) return;
+    this.gs.onCue('slide');
+    const dir = e.to >= e.from ? 1 : -1;
+    const path: number[] = [];
+    for (let p = e.from + dir; dir > 0 ? p <= e.to : p >= e.to; p += dir) path.push(p);
+    const pts = this.positions(e.color, e.piece, path.length ? path : [e.to], e.to, e.lane);
+    this.gs.director.followTarget(() => actor.position, 10, 0.95);
+    void actor.play('dodge', { loop: false, speed: 0.8 });
+    actor.busy = true;
+    for (const to of pts) {
+      const from = actor.position.clone();
+      await this.gs.tween.tween(0.11, (t) => Vector3.LerpToRef(from, to, t, actor.root.position));
+      this.gs.fx.dust(to, 4);
+    }
+    actor.busy = false;
+    actor.play('idle');
+    this.gs.fx.text(actor.position, dir > 0 ? `+${e.to - e.from}` : `${e.to - e.from}`, dir > 0 ? '#7dffb0' : '#ff8a8a', 0.6);
+  }
+
+  private async swapped(e: Ev<'swapped'>) {
+    const a = this.gs.actor(e.color, e.piece);
+    const b = this.gs.actor(e.otherColor, e.otherPiece);
+    if (!a || !b) return;
+    this.gs.onCue('blink');
+    const green: [number, number, number] = [0.4, 0.95, 0.35];
+    this.gs.fx.blink(a.position, green);
+    this.gs.fx.blink(b.position, green);
+    await this.gs.tween.tween(0.2, (t) => {
+      a.body.scaling.setAll(1 - t);
+      b.body.scaling.setAll(1 - t);
+    });
+    a.place(this.gs.layout.position(e.color, e.to, e.piece, e.lane), this.gs.layout.forward(e.color, e.to, e.lane));
+    b.place(this.gs.layout.position(e.otherColor, e.otherTo, e.otherPiece, e.otherLane), this.gs.layout.forward(e.otherColor, e.otherTo, e.otherLane));
+    await this.gs.tween.tween(0.25, (t) => {
+      a.body.scaling.setAll(t);
+      b.body.scaling.setAll(t);
+    });
+  }
+
+  private async fell(e: Ev<'fell'>) {
+    const actor = this.gs.actor(e.color, e.piece);
+    if (!actor) return;
+    const n = this.gs.layout.nodes.get(e.tile);
+    const hole = n ? Vector3.FromArray(n.pos) : actor.position.clone();
+    this.gs.director.cinematic({ target: hole, radius: 7, beta: 0.95 }, 6);
+    this.gs.onCue('fall');
+    this.gs.fx.text(hole, 'AAAH!', '#ff9a5a', 0.8);
+    actor.busy = true;
+    void actor.play('knockdown', { loop: false, speed: 1.3 });
+    await this.gs.tween.tween(0.7, (t) => {
+      actor.body.position.y = -t * t * 2.5;
+      actor.body.rotation.y = t * Math.PI * 3;
+      actor.body.scaling.setAll(1 - t * 0.9);
+    });
+    this.gs.fx.impact(hole, this.gs.layout.data.theme === 'forge' ? [1, 0.4, 0.05] : [0.5, 0.3, 0.9], false);
+    const home = this.gs.layout.position(e.color, -1, e.piece);
+    actor.place(home, this.gs.layout.forward(e.color, -1));
+    actor.body.position.y = 0;
+    actor.body.rotation.y = 0;
+    await this.gs.tween.tween(0.3, (t) => actor.body.scaling.setAll(t));
+    actor.body.scaling.setAll(1);
+    actor.busy = false;
+    void actor.oneShot('standUp', 1.5);
+    this.gs.fx.dust(home, 14);
   }
 
   dispose() {

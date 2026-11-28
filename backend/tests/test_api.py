@@ -64,8 +64,12 @@ def test_catalog(client):
     assert data["routes"]["red"] and data["nodes"]
     assert client.get("/api/maps/nope").status_code == 404
     heroes = {h["id"]: h for h in client.get("/api/heroes").json()}
-    assert heroes["samurai"]["selectable"] and heroes["samurai"]["abilities"][0]["id"] == "katana_slash"
-    assert not heroes["dragon_rider"]["selectable"]
+    assert heroes["samurai"]["selectable"] and [a["id"] for a in heroes["samurai"]["abilities"]] == [
+        "quick_draw",
+        "katana_slash",
+        "thousand_cuts",
+    ]
+    assert all(h["selectable"] and len(h["abilities"]) == 3 for h in heroes.values())
 
 
 def test_lobby_flow(client):
@@ -82,10 +86,7 @@ def test_lobby_flow(client):
     )
     bob_seat = next(p for p in r.json()["players"] if p["id"] == bob["id"])
     assert bob_seat["hero"] == "grand_wizard" and bob_seat["skin"] == "wizard_frost"
-    assert (
-        client.post(f"/api/rooms/{code}/loadout", headers=bob["headers"], json={"hero": "dragon_rider"}).status_code
-        == 400
-    )
+    assert client.post(f"/api/rooms/{code}/loadout", headers=bob["headers"], json={"hero": "nobody"}).status_code == 400
     assert (
         client.post(f"/api/rooms/{code}/loadout", headers=bob["headers"], json={"skin": "samurai_oni"}).status_code
         == 400
@@ -126,6 +127,9 @@ def test_websocket_game_events_and_resync(client, service, clock):
         msg = ws.receive_json()
         assert msg["type"] == "events" and msg["events"][0]["type"] == "rolled"
         seq = msg["seq"]
+
+        ws.send_json({"type": "practice", "dice": 6})
+        assert ws.receive_json()["message"] == "Practice tools only work in practice rooms."
 
         ws.send_json({"type": "cast", "ability": "katana_slash", "target": {"piece": 0}})
         err = ws.receive_json()
@@ -190,3 +194,23 @@ def test_idle_rooms_expire(client, service, clock):
     clock.now += 3601
     service.tick()
     assert client.get(f"/api/rooms/{code}").status_code == 404
+
+
+def test_practice_room_forces_dice_and_sets_mana(client, service):
+    host = guest(client)
+    code = client.post("/api/rooms", headers=host["headers"], json={"mapId": "classic_arena"}).json()["code"]
+    client.post(f"/api/rooms/{code}/bots", headers=host["headers"], json={"hero": "knight"})
+    assert client.post(f"/api/rooms/{code}/practice", headers=host["headers"], json={"enabled": True}).json()[
+        "practice"
+    ]
+    client.post(f"/api/rooms/{code}/start", headers=host["headers"])
+    with client.websocket_connect(f"/api/rooms/{code}/ws?token={host['token']}") as ws:
+        ws.receive_json()
+        ws.receive_json()
+        ws.send_json({"type": "practice", "dice": 6, "mana": 6})
+        msg = ws.receive_json()
+        assert msg["type"] == "events" and msg["room"]["match"]["teams"]["red"]["mana"] == 6
+        ws.send_json({"type": "roll"})
+        rolled = ws.receive_json()
+        assert rolled["events"][0] == {"type": "rolled", "color": "red", "value": 6}
+        assert rolled["room"]["match"]["castTargets"]  # mana 6 and a piece out: spells available

@@ -58,6 +58,10 @@ export interface World {
   /** Surface height at a world x/z (terrain only). */
   groundY(x: number, z: number): number;
   setTurnColor(color: Color | null): void;
+  /** Show or clear a live tile effect (crater, fire, trap, collapsed bridge). */
+  setTileEffect(nodeId: string, effect: 'broken' | 'crater' | 'fire' | 'trap' | 'none', visible?: boolean): void;
+  /** Glowing, clickable markers on tiles (spell targets, lane choices). */
+  highlightTiles(nodeIds: string[], rgb: [number, number, number]): void;
   update(dt: number, t: number): void;
   dispose(): void;
 }
@@ -67,7 +71,8 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   const data = layout.data;
   const rand = mulberry32(data.id.split('').reduce((a, c) => a * 31 + c.charCodeAt(0), 7));
   const root = new TransformNode('world', scene);
-  const wilds = data.theme === 'wilds';
+  const forge = data.theme === 'forge';
+  const wilds = data.theme !== 'arena'; // the big outdoor maps
   const bounds = data.bounds;
 
   // ------------------------------------------------------------------ sky & light
@@ -76,6 +81,11 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   scene.fogMode = Scene.FOGMODE_EXP2;
   scene.fogDensity = wilds ? 0.0085 : 0.012;
   scene.fogColor = new Color3(0.62, 0.74, 0.86);
+  if (forge) {
+    scene.clearColor = new Color4(0.25, 0.1, 0.07, 1);
+    scene.fogDensity = 0.011;
+    scene.fogColor = new Color3(0.33, 0.16, 0.11);
+  }
 
   const sky = MeshBuilder.CreateBox('sky', { size: 900 }, scene);
   const skyMat = new SkyMaterial('skyMat', scene);
@@ -87,6 +97,13 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   skyMat.azimuth = 0.28;
   skyMat.mieDirectionalG = 0.85;
   skyMat.fogEnabled = false;
+  if (forge) {
+    // A smoky, burning sunset.
+    skyMat.turbidity = 20;
+    skyMat.luminance = 0.55;
+    skyMat.rayleigh = 3.5;
+    skyMat.inclination = 0.47;
+  }
   sky.material = skyMat;
   sky.infiniteDistance = true;
   sky.isPickable = false;
@@ -102,6 +119,12 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   sun.position = new Vector3(30, 60, 20);
   sun.intensity = 1.55;
   sun.diffuse = new Color3(1, 0.93, 0.8);
+  if (forge) {
+    sun.diffuse = new Color3(1, 0.62, 0.38);
+    sun.intensity = 1.25;
+    hemi.diffuse = new Color3(1, 0.75, 0.6);
+    hemi.groundColor = new Color3(0.45, 0.16, 0.08);
+  }
   sun.shadowMinZ = 1;
   sun.shadowMaxZ = 160;
   const shadows = new ShadowGenerator(quality === 'high' ? 4096 : 2048, sun);
@@ -159,6 +182,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   const colors: number[] = [];
   const biomeColor = (x: number, z: number): [number, number, number] => {
     if (!wilds) return [0.36, 0.55, 0.26];
+    if (forge) return [0.16, 0.13, 0.12];
     const a = Math.atan2(-z, x);
     // Rough biome by angle around the loop, matching map zones.
     const idx = Math.floor(((Math.PI * 0.75 - a + Math.PI * 4) % (Math.PI * 2)) / (Math.PI * 2) * data.loop.length);
@@ -178,12 +202,14 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     const rd = riverDist(x, z);
     if (rd < 1.2) {
       const k = Math.max(0, 1 - Math.max(0, rd) / 1.2);
-      [r, g, b] = [r + (0.55 - r) * k, g + (0.48 - g) * k, b + (0.33 - b) * k]; // sandy banks
+      const bank = forge ? [0.55, 0.2, 0.06] : [0.55, 0.48, 0.33]; // glowing lava edge / sandy banks
+      [r, g, b] = [r + (bank[0] - r) * k, g + (bank[1] - g) * k, b + (bank[2] - b) * k];
     }
     const pd = pathDist(x, z);
     if (pd < 1.1) {
       const k = 1 - pd / 1.1;
-      [r, g, b] = [r + (0.45 - r) * k * 0.8, g + (0.36 - g) * k * 0.8, b + (0.24 - b) * k * 0.8]; // trodden dirt
+      const dirt = forge ? [0.3, 0.27, 0.25] : [0.45, 0.36, 0.24]; // ash or trodden dirt
+      [r, g, b] = [r + (dirt[0] - r) * k * 0.8, g + (dirt[1] - g) * k * 0.8, b + (dirt[2] - b) * k * 0.8];
     }
     if (y > 2.5) {
       const k = Math.min(1, (y - 2.5) / 3);
@@ -231,6 +257,13 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   waterMat.bumpTexture.level = 0.35;
   (waterMat.bumpTexture as Texture).uScale = 6;
   (waterMat.bumpTexture as Texture).vScale = 1.5;
+  const lavaMat = new StandardMaterial('lava', scene);
+  lavaMat.diffuseColor = new Color3(0.9, 0.3, 0.05);
+  lavaMat.emissiveColor = new Color3(1, 0.38, 0.06);
+  lavaMat.specularColor = Color3.Black();
+  lavaMat.bumpTexture = waterTex.clone();
+  lavaMat.bumpTexture.level = 0.6;
+  (lavaMat.bumpTexture as Texture).uScale = 3;
   const waterMeshes: Mesh[] = [];
   for (const r of rivers) {
     const paths = r.points.map(([x, z], i) => {
@@ -244,7 +277,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
       return [new Vector3(x - ox, -0.42, z - oz), new Vector3(x + ox, -0.42, z + oz)];
     });
     const ribbon = MeshBuilder.CreateRibbon('river', { pathArray: [paths.map((p) => p[0]), paths.map((p) => p[1])] }, scene);
-    ribbon.material = waterMat;
+    ribbon.material = r.kind === 'lava' ? lavaMat : waterMat;
     ribbon.isPickable = false;
     ribbon.parent = root;
     waterMeshes.push(ribbon);
@@ -281,7 +314,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   }
 
   const spacing = (() => {
-    const loop = data.loop.map((id) => layout.nodes.get(id)!);
+    const loop = layout.loopNodes();
     let sum = 0;
     for (let i = 0; i < loop.length; i++) {
       const a = loop[i].pos;
@@ -303,11 +336,12 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   }
   const routeOwner = new Map<string, Color>();
   for (const c of TEAMS) {
-    for (const id of data.routes[c] ?? []) {
-      const n = layout.nodes.get(id)!;
-      if (n.kind === 'home' || n.kind === 'goal') routeOwner.set(id, c);
-      if (n.kind === 'start' && data.routes[c][0] === id) routeOwner.set(id, c);
-    }
+    (data.routes[c] ?? []).forEach((step, i) => {
+      for (const id of Array.isArray(step) ? step : [step]) {
+        const n = layout.nodes.get(id)!;
+        if (n.kind === 'home' || n.kind === 'goal' || (n.kind === 'start' && i === 0)) routeOwner.set(id, c);
+      }
+    });
   }
 
   const plank = new StandardMaterial('plank', scene);
@@ -343,6 +377,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   const shrines: Mesh[] = [];
 
   const tileMeshes: AbstractMesh[] = [];
+  const tileByNode = new Map<string, AbstractMesh>();
   for (const n of data.nodes) {
     const [x, y, z] = n.pos;
     let mesh: AbstractMesh;
@@ -351,7 +386,9 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
       deck.material = plank;
       mesh = deck;
       mesh.position.set(x, y - 0.06, z);
-      const next = layout.nodes.get(data.loop[(data.loop.indexOf(n.id) + 1) % data.loop.length]);
+      const li = layout.loopIndex.get(n.id) ?? 0;
+      const nextStep = data.loop[(li + 1) % data.loop.length];
+      const next = layout.nodes.get(Array.isArray(nextStep) ? nextStep[Math.min(n.lane ?? 0, 1)] : nextStep);
       if (next) mesh.lookAt(new Vector3(next.pos[0], y - 0.06, next.pos[2]));
       // Rope posts.
       for (const side of [-1, 1]) {
@@ -383,6 +420,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     mesh.metadata = { nodeId: n.id };
     shadows.addShadowCaster(mesh);
     tileMeshes.push(mesh);
+    tileByNode.set(n.id, mesh);
 
     if (n.kind === 'safe') {
       const rune = MeshBuilder.CreatePlane(`rune_${n.id}`, { size: tileScale * 0.8 }, scene);
@@ -408,6 +446,201 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
       ring.parent = root;
     }
   }
+
+  // ------------------------------------------------------------------ hazards
+  const glowTex = new DynamicTexture('hazardGlow', { width: 64, height: 64 }, scene, false);
+  {
+    const g = glowTex.getContext() as CanvasRenderingContext2D;
+    const grad = g.createRadialGradient(32, 32, 0, 32, 32, 32);
+    grad.addColorStop(0, 'rgba(255,255,255,1)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = grad;
+    g.fillRect(0, 0, 64, 64);
+    glowTex.update();
+  }
+  const chevronTex = (rgb: string) => {
+    const t = new DynamicTexture(`chevron_${rgb}`, { width: 128, height: 128 }, scene, true);
+    t.hasAlpha = true;
+    const g = t.getContext() as CanvasRenderingContext2D;
+    g.clearRect(0, 0, 128, 128);
+    g.strokeStyle = rgb;
+    g.lineWidth = 14;
+    g.lineCap = 'round';
+    g.shadowColor = rgb;
+    g.shadowBlur = 10;
+    for (const x of [30, 70]) {
+      g.beginPath();
+      g.moveTo(x, 28);
+      g.lineTo(x + 28, 64);
+      g.lineTo(x, 100);
+      g.stroke();
+    }
+    t.update();
+    t.wrapU = Texture.WRAP_ADDRESSMODE;
+    return t;
+  };
+  const neighbour = (n: MapNode, delta: number) => {
+    const li = layout.loopIndex.get(n.id);
+    if (li === undefined) return null;
+    const step = data.loop[(li + delta + data.loop.length) % data.loop.length];
+    return layout.nodes.get(Array.isArray(step) ? step[Math.min(n.lane ?? 0, 1)] : step) ?? null;
+  };
+  const animated: { mesh: Mesh; spin?: number; scroll?: number; pulse?: number }[] = [];
+  const makeMat = (name: string, rgb: [number, number, number], emissive = 1, alpha = 1) => {
+    const m = new StandardMaterial(name, scene);
+    m.diffuseColor = new Color3(...rgb);
+    m.emissiveColor = new Color3(rgb[0] * emissive, rgb[1] * emissive, rgb[2] * emissive);
+    m.specularColor = Color3.Black();
+    m.alpha = alpha;
+    return m;
+  };
+  const pitRgb: [number, number, number] = forge ? [1, 0.35, 0.05] : [0.5, 0.25, 0.9];
+  const pitHole = makeMat('pitHole', [0.02, 0.01, 0.01], 0);
+  const pitRim = makeMat('pitRim', pitRgb, 0.9);
+  const makePit = (name: string, x: number, y: number, z: number) => {
+    const node = new TransformNode(name, scene);
+    node.parent = root;
+    node.position.set(x, y, z);
+    const hole = MeshBuilder.CreateCylinder(`${name}_hole`, { diameter: tileScale * 0.95, height: 0.05, tessellation: 28 }, scene);
+    hole.material = pitHole;
+    hole.parent = node;
+    hole.position.y = -0.1;
+    const rim = MeshBuilder.CreateTorus(`${name}_rim`, { diameter: tileScale * 0.95, thickness: 0.09, tessellation: 32 }, scene);
+    rim.material = pitRim;
+    rim.parent = node;
+    rim.position.y = -0.05;
+    animated.push({ mesh: rim, pulse: 1 });
+    for (const m of [hole, rim]) m.isPickable = false;
+    return node;
+  };
+  for (const n of data.nodes) {
+    const hz = n.hazard;
+    if (!hz) continue;
+    const tile = tileByNode.get(n.id);
+    const [x, y, z] = n.pos;
+    if (hz.type === 'pit') {
+      tile?.setEnabled(false);
+      makePit(`pit_${n.id}`, x, y, z);
+    } else if (hz.type === 'slide' || hz.type === 'current') {
+      const sign = (hz.steps ?? 1) >= 0 ? 1 : -1;
+      const toward = neighbour(n, sign);
+      const rgb = hz.type === 'current' ? '#5fd0ff' : sign > 0 ? '#7dffb0' : '#ff6a5a';
+      const plane = MeshBuilder.CreatePlane(`slide_${n.id}`, { width: tileScale * 0.85, height: tileScale * 0.6 }, scene);
+      const mat = new StandardMaterial(`slideMat_${n.id}`, scene);
+      mat.diffuseTexture = chevronTex(rgb);
+      mat.opacityTexture = mat.diffuseTexture;
+      mat.emissiveColor = Color3.FromHexString(rgb);
+      mat.disableLighting = true;
+      plane.material = mat;
+      plane.position.set(x, y + 0.02, z);
+      plane.rotation.x = Math.PI / 2;
+      if (toward) plane.rotation.y = Math.atan2(toward.pos[0] - x, toward.pos[2] - z) - Math.PI / 2;
+      plane.isPickable = false;
+      plane.parent = root;
+      animated.push({ mesh: plane, scroll: -0.8 });
+    } else if (hz.type === 'portal') {
+      const ring = MeshBuilder.CreateTorus(`portal_${n.id}`, { diameter: tileScale * 0.9, thickness: 0.1, tessellation: 40 }, scene);
+      ring.material = makeMat(`portalMat_${n.id}`, [0.7, 0.35, 1], 1);
+      ring.position.set(x, y + 0.06, z);
+      ring.isPickable = false;
+      ring.parent = root;
+      const disc = MeshBuilder.CreateDisc(`portalDisc_${n.id}`, { radius: tileScale * 0.42, tessellation: 32 }, scene);
+      disc.material = makeMat(`portalDiscMat_${n.id}`, [0.45, 0.2, 0.9], 0.9, 0.7);
+      disc.rotation.x = Math.PI / 2;
+      disc.position.set(x, y + 0.04, z);
+      disc.isPickable = false;
+      disc.parent = root;
+      animated.push({ mesh: ring, spin: 2, pulse: 1 });
+    } else if (hz.type === 'crumble' && tile) {
+      // Cracked, darker planks.
+      const m = (tile.material as StandardMaterial).clone(`crumble_${n.id}`);
+      m.diffuseColor = new Color3(0.32, 0.2, 0.12);
+      m.emissiveColor = forge ? new Color3(0.25, 0.06, 0.0) : Color3.Black();
+      tile.material = m;
+    }
+  }
+
+  // Live tile effects (craters, fire, traps, collapsed bridges).
+  const overlays = new Map<string, { node: TransformNode; ps?: ParticleSystem }>();
+  const fireAt = (x: number, y: number, z: number, smoke = false) => {
+    const ps = new ParticleSystem('tileFire', smoke ? 60 : 120, scene);
+    ps.particleTexture = glowTex;
+    ps.emitter = new Vector3(x, y + 0.05, z);
+    ps.minEmitBox = new Vector3(-0.35, 0, -0.35);
+    ps.maxEmitBox = new Vector3(0.35, 0, 0.35);
+    ps.color1 = smoke ? new Color4(0.3, 0.25, 0.22, 0.6) : new Color4(1, 0.55, 0.1, 1);
+    ps.color2 = smoke ? new Color4(0.2, 0.18, 0.16, 0.4) : new Color4(1, 0.25, 0.05, 1);
+    ps.colorDead = new Color4(0.1, 0.05, 0.05, 0);
+    ps.minSize = smoke ? 0.3 : 0.15;
+    ps.maxSize = smoke ? 0.7 : 0.4;
+    ps.minLifeTime = 0.3;
+    ps.maxLifeTime = smoke ? 1.6 : 0.8;
+    ps.emitRate = smoke ? 25 : 80;
+    ps.direction1 = new Vector3(-0.1, 1, -0.1);
+    ps.direction2 = new Vector3(0.1, 1.6, 0.1);
+    ps.minEmitPower = 0.5;
+    ps.maxEmitPower = 1.2;
+    ps.blendMode = smoke ? ParticleSystem.BLENDMODE_STANDARD : ParticleSystem.BLENDMODE_ADD;
+    ps.start();
+    return ps;
+  };
+  const trapMat = makeMat('trap', [0.75, 0.75, 0.8], 0.15);
+  const clearOverlay = (id: string) => {
+    const o = overlays.get(id);
+    if (!o) return;
+    o.ps?.dispose();
+    o.node.dispose(false, false);
+    overlays.delete(id);
+  };
+  const setTileEffect: World['setTileEffect'] = (id, effect, visible = true) => {
+    const n = layout.nodes.get(id);
+    if (!n) return;
+    const tile = tileByNode.get(id);
+    clearOverlay(id);
+    const staticPit = n.hazard?.type === 'pit';
+    tile?.setEnabled(!staticPit);
+    if (effect === 'none' || !visible) return;
+    const [x, y, z] = n.pos;
+    if (effect === 'crater' || effect === 'broken') {
+      tile?.setEnabled(false);
+      const pit = makePit(`fx_${id}`, x, y, z);
+      overlays.set(id, { node: pit, ps: fireAt(x, y - 0.1, z, true) });
+    } else if (effect === 'fire') {
+      const node = new TransformNode(`fire_${id}`, scene);
+      overlays.set(id, { node, ps: fireAt(x, y, z) });
+    } else if (effect === 'trap') {
+      const node = new TransformNode(`trap_${id}`, scene);
+      node.position.set(x, y + 0.02, z);
+      for (let k = 0; k < 6; k++) {
+        const spike = MeshBuilder.CreateCylinder(`spike_${id}_${k}`, { height: 0.22, diameterTop: 0, diameterBottom: 0.08, tessellation: 4 }, scene);
+        spike.material = trapMat;
+        spike.parent = node;
+        const a = (k / 6) * Math.PI * 2;
+        spike.position.set(Math.cos(a) * 0.3, 0.1, Math.sin(a) * 0.3);
+        spike.isPickable = false;
+      }
+      overlays.set(id, { node });
+    }
+  };
+
+  // Clickable highlight rings for targeting.
+  let highlights: Mesh[] = [];
+  const highlightMat = makeMat('highlight', [1, 0.85, 0.3], 1, 0.9);
+  const highlightTiles: World['highlightTiles'] = (ids, rgb) => {
+    for (const h of highlights) h.dispose();
+    highlights = [];
+    highlightMat.emissiveColor = new Color3(...rgb);
+    for (const id of ids) {
+      const n = layout.nodes.get(id);
+      if (!n) continue;
+      const ring = MeshBuilder.CreateCylinder(`hl_${id}`, { diameter: tileScale * 1.05, height: 0.08, tessellation: 32 }, scene);
+      ring.material = highlightMat;
+      ring.position.set(n.pos[0], n.pos[1] + 0.06, n.pos[2]);
+      ring.isPickable = true;
+      ring.metadata = { nodeId: id, highlight: true };
+      highlights.push(ring);
+    }
+  };
 
   // ------------------------------------------------------------------ temple
   const templeStone = new StandardMaterial('templeStone', scene);
@@ -547,7 +780,7 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     await Promise.all(jobs);
   };
 
-  const treeSet = wilds ? [...ENV.trees['jungle'], ...ENV.trees['forest']] : ENV.trees['arena'];
+  const treeSet = forge ? ENV.rocks : wilds ? [...ENV.trees['jungle'], ...ENV.trees['forest']] : ENV.trees['arena'];
   const treeCount = quality === 'high' ? (wilds ? 260 : 90) : wilds ? 150 : 60;
   await Promise.all([
     ...pedestalTasks,
@@ -616,8 +849,8 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
   motes.emitter = new Vector3(0, 1.5, 0);
   motes.minEmitBox = new Vector3(-bounds, -1, -bounds);
   motes.maxEmitBox = new Vector3(bounds, 3, bounds);
-  motes.color1 = new Color4(1, 1, 0.7, 0.8);
-  motes.color2 = new Color4(0.7, 1, 0.6, 0.6);
+  motes.color1 = forge ? new Color4(1, 0.5, 0.1, 0.9) : new Color4(1, 1, 0.7, 0.8);
+  motes.color2 = forge ? new Color4(1, 0.25, 0.05, 0.8) : new Color4(0.7, 1, 0.6, 0.6);
   motes.colorDead = new Color4(1, 1, 1, 0);
   motes.minSize = 0.04;
   motes.maxSize = 0.1;
@@ -640,12 +873,23 @@ export async function buildWorld(scene: Scene, layout: BoardLayout, assets: Asse
     sun,
     shadows,
     groundY,
+    setTileEffect,
+    highlightTiles,
     setTurnColor(color) {
       const rgb = color ? TEAM_RGB[color] : [1, 1, 1];
       heartTarget.set(rgb[0], rgb[1], rgb[2]);
     },
     update(dt, t) {
       (waterMat.bumpTexture as Texture).uOffset += dt * 0.05;
+      (lavaMat.bumpTexture as Texture).uOffset += dt * 0.015;
+      lavaMat.emissiveColor.g = 0.34 + Math.sin(t * 1.3) * 0.05;
+      for (const a of animated) {
+        if (a.spin) a.mesh.rotation.y += dt * a.spin;
+        if (a.scroll) ((a.mesh.material as StandardMaterial).diffuseTexture as Texture).uOffset += dt * a.scroll;
+        if (a.pulse) a.mesh.scaling.setAll(1 + Math.sin(t * 3 + a.mesh.position.x) * 0.06);
+      }
+      const hs = 1 + Math.sin(t * 6) * 0.08;
+      for (const h of highlights) h.scaling.set(hs, 1, hs);
       (waterMat.bumpTexture as Texture).vOffset += dt * 0.02;
       Color3.LerpToRef(turnColor, heartTarget, Math.min(1, dt * 3), turnColor);
       heartMat.emissiveColor.copyFrom(turnColor);

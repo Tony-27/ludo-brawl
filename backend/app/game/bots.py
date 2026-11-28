@@ -1,12 +1,18 @@
-"""Greedy AI used for bot players and for idle humans."""
+"""Bot AI used for bot players and idle humans.
+
+Bots are hero-agnostic: they try each legal move / spell on a copy of the
+match and keep the one that improves their position the most. New heroes,
+spells and map hazards therefore work for bots without extra code.
+"""
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass
 
-from .board import CAMP, Color, Node
+from .board import CAMP, Color
 from .heroes import ABILITIES, HEROES
-from .rules import _HANDLERS, Match, Phase, RuleError
+from .rules import Match, Phase, RuleError
 
 BOT_NAMES = ["Robo Rex", "Dicey Diana", "Bolt", "Captain Six", "Pixel Pete", "Lady Luck"]
 
@@ -17,128 +23,91 @@ class BotAction:
     ability: str | None = None
     target: dict | None = None
     piece: int | None = None
+    lane: int | None = None
 
 
-def _threatened(match: Match, color: Color, node: Node | None) -> bool:
-    """An enemy sits 1-6 steps behind this tile on the shared loop."""
-    if node is None or match.board.is_immune(node) or node.loop_index is None:
-        return False
-    for c, team in match.teams.items():
-        if c == color:
-            continue
-        for p in team.pieces:
-            n = match.board.node(c, p)
-            if n is None or n.loop_index is None:
-                continue
-            d = (node.loop_index - n.loop_index) % match.board.loop_length
-            if 1 <= d <= 6:
-                return True
-    return False
-
-
-def score_move(match: Match, piece: int) -> float:
-    color = match.current
-    roll = match.last_roll or 0
-    start = match.teams[color].pieces[piece]
-    end = match.target(color, piece, roll)
-    if end is None:
-        return float("-inf")
+def _team_value(match: Match, color: Color) -> float:
+    team = match.teams[color]
     finish = match.board.finish(color)
-    score = end / 10
-    node = match.board.node(color, end)
-    if end == finish:
-        score += 80
-    elif node is not None and node.loop_index is None:
-        score += 40  # safe in the home path
-    if start == CAMP:
-        score += 60
-    if node is not None:
-        if not match.board.is_immune(node) and match._pieces_on(node.id, exclude=color):
-            score += 100
-        if match.board.is_immune(node):
-            score += 15
-        if node.kind == "shrine":
-            score += 12
-        if _threatened(match, color, node):
-            score -= 30
-    if _threatened(match, color, match.board.node(color, start)):
-        score += 25
-    return score
+    value = 0.0
+    for i, p in enumerate(team.pieces):
+        if p == CAMP:
+            value -= 12
+            continue
+        if p >= finish:
+            value += 130
+            continue
+        value += 10 + 100 * p / finish
+        node = match.node_of(color, i)
+        if node is not None and (match.board.is_immune(node)):
+            value += 4
+        st = team.statuses[i]
+        if "shield" in st:
+            value += 3
+        if "rooted" in st:
+            value -= 4
+    value += team.mana * 1.2
+    if color in match.ranking:
+        value += 400 * (len(match.order) - match.ranking.index(color))
+    return value
 
 
-def _best_cast(match: Match) -> BotAction | None:
+def evaluate(match: Match, color: Color) -> float:
+    """How good the position is for `color`: own progress minus the strongest rival's."""
+    mine = _team_value(match, color)
+    rivals = [_team_value(match, c) for c in match.order if c != color]
+    return mine - (max(rivals) * 0.6 + sum(rivals) / max(1, len(rivals)) * 0.4)
+
+
+def _try(match: Match, fn) -> float | None:
+    sim = match.clone()
+    color = match.current
+    try:
+        fn(sim)
+    except RuleError:
+        return None
+    return evaluate(sim, color)
+
+
+def best_cast(match: Match) -> BotAction | None:
     color = match.current
     team = match.teams[color]
+    base = evaluate(match, color)
     best: tuple[float, BotAction] | None = None
-
-    def consider(score: float, action: BotAction) -> None:
-        nonlocal best
-        if score > 0 and (best is None or score > best[0]):
-            best = (score, action)
-
-    for aid in HEROES[team.hero].abilities:
-        if not match.can_cast(aid):
-            continue
+    for aid, targets in match.cast_targets().items():
         ability = ABILITIES[aid]
-        if ability.targeting == "ownPiece" and "knockback" in ability.params:
-            for i, p in enumerate(team.pieces):
-                node = match.board.node(color, p)
-                if node is None or node.loop_index is None:
-                    continue
-                route = match.board.routes[color]
-                value = 0.0
-                for k in range(1, ability.params["reach"] + 1):
-                    if p + k >= len(route):
-                        break
-                    tile = match.board.nodes[route[p + k]]
-                    if tile.loop_index is None:
-                        break
-                    if not match.board.is_immune(tile):
-                        for vc, vi in match._pieces_on(tile.id, exclude=color):
-                            value += 20 + match.teams[vc].pieces[vi]
-                consider(value, BotAction("cast", aid, {"piece": i}))
-        elif ability.targeting == "enemyPiece":
-            for c, other in match.teams.items():
-                if c == color:
-                    continue
-                for i, p in enumerate(other.pieces):
-                    node = match.board.node(c, p)
-                    if node is None or node.loop_index is None or match.board.is_immune(node):
-                        continue
-                    try:
-                        # Handlers validate without applying anything.
-                        _HANDLERS[aid](match, ability, color, {"color": c.value, "piece": i})
-                    except RuleError:
-                        continue
-                    consider(15 + p, BotAction("cast", aid, {"color": c.value, "piece": i}))
-        elif ability.targeting == "ownPieceSteps":
-            finish = match.board.finish(color)
-            for i, p in enumerate(team.pieces):
-                if p == CAMP or p >= finish:
-                    continue
-                for steps in range(ability.params["maxSteps"], 0, -1):
-                    if p + steps > finish:
-                        continue
-                    node = match.board.node(color, p + steps)
-                    value = 0.0
-                    if p + steps == finish:
-                        value = 60
-                    elif _threatened(match, color, match.board.node(color, p)) and not _threatened(match, color, node):
-                        value = 25
-                    if team.mana >= match.config.max_mana:
-                        value += 5  # don't waste mana at the cap
-                    consider(value, BotAction("cast", aid, {"piece": i, "steps": steps}))
-                    break
+        # Mana has value; ultimates should be saved for a big swing.
+        threshold = ability.cost * 0.9 + (2 if ability.once_per_match else 0)
+        if team.mana >= match.config.max_mana:
+            threshold -= 3  # don't waste mana at the cap
+        for target in targets:
+            score = _try(match, lambda m, a=aid, t=target: m.cast(a, t))
+            if score is None:
+                continue
+            gain = score - base
+            if gain > threshold and (best is None or gain > best[0]):
+                best = (gain, BotAction("cast", aid, target))
     return best[1] if best else None
 
 
-def choose_action(match: Match) -> BotAction:
+def best_move(match: Match, rng: random.Random | None = None) -> BotAction:
+    options = match.move_options()
+    if not options:
+        raise RuleError("No legal moves")
+    scored = []
+    for o in options:
+        score = _try(match, lambda m, o=o: m.move(o.piece, o.lane))
+        scored.append(((score if score is not None else float("-inf")) + (rng.random() * 0.5 if rng else 0), o))
+    _, o = max(scored, key=lambda s: s[0])
+    return BotAction("move", piece=o.piece, lane=o.lane)
+
+
+def choose_action(match: Match, rng: random.Random | None = None) -> BotAction:
     if match.phase == Phase.ROLL:
-        cast = _best_cast(match)
-        return cast or BotAction("roll")
+        return best_cast(match) or BotAction("roll")
     if match.phase == Phase.MOVE:
-        legal = match.legal_pieces()
-        if not legal:
-            raise RuleError("No legal moves")
-        return BotAction("move", piece=max(legal, key=lambda i: score_move(match, i)))
+        return best_move(match, rng)
     raise RuleError("Game over")
+
+
+__all__ = ["BOT_NAMES", "BotAction", "HEROES", "choose_action", "evaluate"]

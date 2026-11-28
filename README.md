@@ -34,12 +34,21 @@ npm start
 
 | | |
 |---|---|
-| Heroes | **Samurai** – *Katana Slash* (3 mana): hit the 2 tiles ahead, knock enemies back 4. *Bushido*: +1 mana per knockout. **Grand Wizard** – *Zap* (3): knock back an enemy within 6 tiles by 3; *Blink* (4): teleport 1–3 tiles. Knight, Dragon Rider, Ranger and Druid are defined and coming next. |
-| Skins | Cosmetic only (heroes carry the abilities). Each hero has a default and a rarer skin. |
-| Mana | Max 5. +1 per turn, +1 on rolling a 1, +2 when knocked out, +1 when knocked back, +2 for stopping on a shrine. One spell per turn, before or after rolling. |
-| Base rules | Roll a 6 to leave camp. Land on an enemy to send it back to camp. Start, ✦ and home-path tiles are safe from attacks and spells. 6 / knockout / reaching the temple = extra roll; three 6s lose the turn. Exact roll to finish. |
-| Maps | **Emerald Wilds** (64-tile winding trail through jungle, forest and ruins, rivers with bridges, shrines) and **Classic Arena**. |
+| Heroes | Six heroes, each with **3 spells**: a cheap *basic*, a *utility* and a once-per-match *ultimate*. **Samurai** (Quick Draw, Katana Slash, Thousand Cuts), **Grand Wizard** (Zap, Blink, Meteor), **Knight** (Shield Wall, Shield Bash, Rally), **Ranger** (Piercing Arrow, Snare Trap, Rain of Arrows), **Druid** (Entangling Roots, Wild Growth, Overgrowth), **Dragon Rider** (Dive, Fire Breath, Inferno). Full text in the lobby or `backend/app/game/heroes.py`. |
+| Skins | Cosmetic only (heroes carry the abilities). Every hero has a default and a rarer skin. |
+| Mana | Max 6. +1 per turn, +1 on rolling a 1, +2 when knocked out, +1 when knocked back, +2 for stopping on a shrine. One spell per turn, before or after rolling. |
+| Base rules | 3 heroes per player. Roll a 6 to leave camp. Land on an enemy to send it back to camp. Start, ✦ and home-path tiles are safe from attacks and spells. 6 / knockout / reaching the temple = extra roll; three 6s lose the turn. Exact roll to finish. |
+| Hazards | **Pits** (and Meteor craters) send you back to camp; **slides** carry you forward or back; **portals** jump you ahead; **currents** drift you at the start of your turn; **crumbling bridges** collapse after a few crossings and rebuild later. Any way you land on a tile counts, so a knockback can push someone into a pit. |
+| Forks | Some stretches split into a safe lane and a risky one (slides, pits, a shrine). When your move ends inside a fork you pick the lane. |
+| Maps | **Emerald Wilds** (standard), **Molten Forge** (forks, lava, every hazard) and **Classic Arena**. |
 | Flow | Idle humans are auto-played after 30 s; leaving mid-game hands your seat to a bot. |
+| Practice | The host can make a room a practice room: choose your next roll and refill mana / reset your ultimate any time. Practice games are not recorded. |
+
+**Controls:** `Space` roll · `1` `2` `3` spells · `Esc` cancel · `Tab` cycle your heroes · `H` your camp · `Q` whole map · `?` help. The camera frames whatever you're choosing between; hero cards (bottom left) select or find each of your heroes.
+
+### Balancing
+
+`python scripts/balance.py --games 200` (in `backend/`) makes bots play many matches and prints win rate and average placement per hero, spell usage per match and match length per map. Bots are decent, not perfect, so read it as trends next to your own play-testing.
 
 ## Architecture
 
@@ -50,6 +59,7 @@ backend/app/
   game/rules.py        Authoritative rules engine; pure, seeded, emits domain events
   game/events.py       Event models (moved, captured, abilityCast, knockedBack, ...)
   game/heroes.py       Hero / ability / skin catalogue (data)
+  game/spells.py       Generic spell effects (dash, line, radius, strike, blink, meteor, trap, shield, rally, swap)
   game/bots.py         Bot AI (moves + spell casting)
   rooms/service.py     Rooms, seats, hero/skin/map choice, turn timer, bots — behind a RoomStore (Redis-ready)
   realtime/            WebSocket hub + wire protocol (pydantic → JSON Schema → TypeScript)
@@ -100,4 +110,4 @@ Placeholder art is CC0 from [KayKit](https://kaylousberg.com) (Adventurers + Med
 
 ## Roadmap
 
-Accounts (upgrade guests in place) → leaderboards (from match history) → currency & cosmetic shop → more heroes (Knight, Dragon Rider, Ranger, Druid are stubbed) → more maps → mobile quality preset.
+Accounts (upgrade guests in place), new start screen + main menu, room browser → levels, prestige, ranked & leaderboards → currency & cosmetic shop → more maps → mobile quality preset.

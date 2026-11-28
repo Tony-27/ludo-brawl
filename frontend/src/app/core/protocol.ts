@@ -1,6 +1,6 @@
 /* Generated from backend/app/realtime/protocol.py by npm run gen:protocol. Do not edit. */
 
-export type ClientMessage = RollCommand | MoveCommand | CastCommand | PingCommand | ResyncCommand;
+export type ClientMessage = RollCommand | MoveCommand | CastCommand | PracticeCommand | PingCommand | ResyncCommand;
 export type GameEvent =
   | TurnStarted
   | ManaChanged
@@ -11,6 +11,12 @@ export type GameEvent =
   | AbilityCast
   | KnockedBack
   | Teleported
+  | Swapped
+  | Fell
+  | Slid
+  | Portaled
+  | Drifted
+  | TileChanged
   | Blocked
   | StatusChanged
   | PieceFinished
@@ -45,6 +51,7 @@ export interface RollCommand {
  * via the `definition` "MoveCommand".
  */
 export interface MoveCommand {
+  lane: number | null;
   piece: number;
   type: "move";
 }
@@ -58,6 +65,17 @@ export interface CastCommand {
     [k: string]: unknown;
   };
   type: "cast";
+}
+/**
+ * Practice rooms only: force the next roll and/or set your mana.
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "PracticeCommand".
+ */
+export interface PracticeCommand {
+  dice: number | null;
+  mana: number | null;
+  type: "practice";
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -90,7 +108,7 @@ export interface ManaChanged {
   color: Color;
   delta: number;
   mana: number;
-  reason: "turn" | "rolledOne" | "shrine" | "knockedOut" | "knockedBack" | "cast" | "passive";
+  reason: "turn" | "rolledOne" | "shrine" | "knockedOut" | "knockedBack" | "cast" | "passive" | "burned" | "practice";
   type: "manaChanged";
 }
 /**
@@ -118,10 +136,12 @@ export interface TurnPassed {
 export interface Moved {
   color: Color;
   from: number;
+  lane: number;
   path: number[];
   piece: number;
   to: number;
   type: "moved";
+  via: "roll" | "dash" | "rally";
 }
 /**
  * A piece was landed on and sent back to its camp.
@@ -160,6 +180,7 @@ export interface KnockedBack {
   byColor: Color;
   color: Color;
   from: number;
+  lane: number;
   piece: number;
   to: number;
   type: "knockedBack";
@@ -171,12 +192,90 @@ export interface KnockedBack {
 export interface Teleported {
   color: Color;
   from: number;
+  lane: number;
   piece: number;
   to: number;
   type: "teleported";
 }
 /**
- * An attack hit a piece that was protected.
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Swapped".
+ */
+export interface Swapped {
+  color: Color;
+  lane: number;
+  otherColor: Color;
+  otherLane: number;
+  otherPiece: number;
+  otherTo: number;
+  piece: number;
+  to: number;
+  type: "swapped";
+}
+/**
+ * Fell into a pit or crater: back to camp.
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Fell".
+ */
+export interface Fell {
+  at: number;
+  color: Color;
+  piece: number;
+  tile: string;
+  type: "fell";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Slid".
+ */
+export interface Slid {
+  color: Color;
+  from: number;
+  lane: number;
+  piece: number;
+  to: number;
+  type: "slid";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Portaled".
+ */
+export interface Portaled {
+  color: Color;
+  from: number;
+  lane: number;
+  piece: number;
+  to: number;
+  type: "portaled";
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "Drifted".
+ */
+export interface Drifted {
+  color: Color;
+  from: number;
+  lane: number;
+  piece: number;
+  to: number;
+  type: "drifted";
+}
+/**
+ * A tile gained or lost a temporary effect (or a bridge broke for good).
+ *
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "TileChanged".
+ */
+export interface TileChanged {
+  effect: "broken" | "crater" | "fire" | "trap" | "none";
+  owner: Color | null;
+  tile: string;
+  turns: number | null;
+  type: "tileChanged";
+}
+/**
+ * An attack or fall hit a piece that was protected.
  *
  * This interface was referenced by `Protocol`'s JSON-Schema
  * via the `definition` "Blocked".
@@ -243,6 +342,7 @@ export interface RoomView {
   mapId: string;
   match: MatchView | null;
   players: PlayerView[];
+  practice: boolean;
   seq: number;
   state: "lobby" | "playing" | "finished";
   version: number;
@@ -252,19 +352,37 @@ export interface RoomView {
  * via the `definition` "MatchView".
  */
 export interface MatchView {
+  castTargets: {
+    [k: string]: {
+      [k: string]: unknown;
+    }[];
+  };
   castUsed: boolean;
   current: Color;
   lastRoll: number | null;
   legalPieces: number[];
   mapId: string;
+  moveOptions: MoveOptionView[];
   phase: "roll" | "move" | "over";
   ranking: Color[];
   teams: {
     [k: string]: TeamView;
   };
+  tiles: {
+    [k: string]: TileView;
+  };
   turn: number;
   turnOrder: Color[];
   turnTimeLeftMs: number | null;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "MoveOptionView".
+ */
+export interface MoveOptionView {
+  lane: number | null;
+  piece: number;
+  to: number;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -273,10 +391,21 @@ export interface MatchView {
 export interface TeamView {
   finish: number;
   hero: string;
+  lanes: number[];
   mana: number;
   maxMana: number;
   pieces: number[];
   statuses: string[][];
+  ultUsed: boolean;
+}
+/**
+ * This interface was referenced by `Protocol`'s JSON-Schema
+ * via the `definition` "TileView".
+ */
+export interface TileView {
+  effect: "broken" | "crater" | "fire" | "trap";
+  owner: Color | null;
+  turns: number | null;
 }
 /**
  * This interface was referenced by `Protocol`'s JSON-Schema
@@ -330,6 +459,12 @@ export interface EventsMessage {
     | AbilityCast
     | KnockedBack
     | Teleported
+    | Swapped
+    | Fell
+    | Slid
+    | Portaled
+    | Drifted
+    | TileChanged
     | Blocked
     | StatusChanged
     | PieceFinished

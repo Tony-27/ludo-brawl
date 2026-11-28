@@ -210,7 +210,9 @@ export class RoomStore {
   }
 
   roll = () => this.command({ type: 'roll' });
-  move = (piece: number) => this.command({ type: 'move', piece });
+  move = (piece: number, lane: number | null = null) => this.command({ type: 'move', piece, lane });
+  practice = (body: { dice?: number | null; mana?: number | null }) =>
+    this.send({ type: 'practice', dice: body.dice ?? null, mana: body.mana ?? null });
   cast = (ability: string, target: Record<string, unknown>) => this.command({ type: 'cast', ability, target });
 
   // ---------------------------------------------------------------- lobby (REST)
@@ -233,6 +235,7 @@ export class RoomStore {
   kick = (playerId: string) => this.act((c) => this.api.kick(c, playerId));
   loadout = (body: { color?: Color; hero?: string; skin?: string }) => this.act((c) => this.api.loadout(c, body));
   setMap = (mapId: string) => this.act((c) => this.api.setMap(c, mapId));
+  setPractice = (enabled: boolean) => this.act((c) => this.api.setPractice(c, enabled));
   start = () => this.act((c) => this.api.start(c));
   rematch = () => this.act((c) => this.api.rematch(c));
 
